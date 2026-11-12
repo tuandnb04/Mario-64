@@ -2,18 +2,21 @@
 using UnityEngine;
 using UnityEngine.UIElements;
 
-public class Readme : ScriptableObject
+namespace TutorialInfo
 {
-    public StyleSheet commonStyle;
-    public StyleSheet darkStyle;
-    public StyleSheet lightStyle;
-    public Texture2D icon;
-    public string title;
-    public Section[] sections;
-
-    [Serializable]
-    public class Section
+    public class Readme : ScriptableObject
     {
-        public string heading, text, linkText, url;
+        public StyleSheet commonStyle;
+        public StyleSheet darkStyle;
+        public StyleSheet lightStyle;
+        public Texture2D icon;
+        public string title;
+        public Section[] sections;
+
+        [Serializable]
+        public class Section
+        {
+            public string heading, text, linkText, url;
+        }
     }
 }
