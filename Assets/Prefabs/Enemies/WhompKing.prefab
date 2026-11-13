@@ -16006,7 +16006,7 @@ Transform:
   - {fileID: 2307271562418570825}
   - {fileID: 374367322934522731}
   - {fileID: 3487532164239743740}
-  - {fileID: 6656535300556801944}
+  - {fileID: 4309589477829924291}
   m_Father: {fileID: 2043765075337669296}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &4558419190839173103
@@ -39660,7 +39660,7 @@ MonoBehaviour:
   m_SelectedFaces: 
   m_SelectedEdges: []
   m_SelectedVertices: 
---- !u!1001 &8966830742132039062
+--- !u!1001 &2008300146198843341
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -39729,10 +39729,10 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: f3a3e1b5863f1b64c9b65f68ab3171b3, type: 3}
---- !u!4 &6656535300556801944 stripped
+--- !u!4 &4309589477829924291 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2310441835536603662, guid: f3a3e1b5863f1b64c9b65f68ab3171b3, type: 3}
-  m_PrefabInstance: {fileID: 8966830742132039062}
+  m_PrefabInstance: {fileID: 2008300146198843341}
   m_PrefabAsset: {fileID: 0}
 --- !u!43 &-8708955454253815438
 Mesh:
