@@ -27,7 +27,7 @@ Material:
     m_Floats:
     - _Exponent: 1.4
     m_Colors:
-    - _GroundColor: {r: 0.23137255, g: 0.61960787, b: 0.32156864, a: 1}
+    - _GroundColor: {r: 0.68, g: 0.87, b: 0.99, a: 1}
     - _HorizonColor: {r: 0.74509805, g: 0.8901961, b: 0.972549, a: 1}
     - _SunColor: {r: 1, g: 0.9490196, b: 0.8627451, a: 1}
     - _ZenithColor: {r: 0.2901961, g: 0.5647059, b: 0.8862745, a: 1}

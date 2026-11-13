@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using Mario64Remake;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Mario64Remake
 {
@@ -36,7 +37,7 @@ namespace Mario64Remake
 /// </summary>
 public class BobOmbBattlefieldController : MonoBehaviour
 {
-    public Mario64Remake.BattlefieldElementType elementType = Mario64Remake.BattlefieldElementType.KingBobOmbBoss;
+    public BattlefieldElementType elementType = BattlefieldElementType.KingBobOmbBoss;
     public int maxHits = 3;
     public int currentHits;
     public Transform visualSubTarget;
@@ -55,6 +56,11 @@ public class BobOmbBattlefieldController : MonoBehaviour
     private bool _completed;
     private bool _activeTriggered;
     private int _waypointIndex;
+    private float _kingGrabTimer;
+    private float _kingFrontBumpCooldown;
+    private float _chompCycleTimer;
+    private Vector3 _chompRestLocalPos;
+    private Transform[] _chompChainLinks;
 
     private void Awake()
     {
@@ -79,10 +85,10 @@ public class BobOmbBattlefieldController : MonoBehaviour
         {
             gateToDestroy.SetActive(true);
         }
-        if (rewardStar != null && (elementType == Mario64Remake.BattlefieldElementType.KingBobOmbBoss ||
-                                   elementType == Mario64Remake.BattlefieldElementType.ChainChompStake ||
-                                   elementType == Mario64Remake.BattlefieldElementType.KoopaTheQuickRacer ||
-                                   elementType == Mario64Remake.BattlefieldElementType.WingCapRedBlock))
+        if (rewardStar != null && (elementType == BattlefieldElementType.KingBobOmbBoss ||
+                                   elementType == BattlefieldElementType.ChainChompStake ||
+                                   elementType == BattlefieldElementType.KoopaTheQuickRacer ||
+                                   elementType == BattlefieldElementType.WingCapRedBlock))
         {
             rewardStar.gameObject.SetActive(false);
         }
@@ -91,6 +97,9 @@ public class BobOmbBattlefieldController : MonoBehaviour
         _activeTriggered = false;
         _waypointIndex = 0;
         _invulnTimer = 0f;
+        _kingGrabTimer = 0f;
+        _kingFrontBumpCooldown = 0f;
+        _chompCycleTimer = 0f;
         gameObject.SetActive(true);
     }
 
@@ -110,55 +119,135 @@ public class BobOmbBattlefieldController : MonoBehaviour
 
         switch (elementType)
         {
-            case Mario64Remake.BattlefieldElementType.KingBobOmbBoss:
+            case BattlefieldElementType.KingBobOmbBoss:
                 UpdateKingBobOmb(dt);
                 break;
-            case Mario64Remake.BattlefieldElementType.ChainChompStake:
-                UpdateChainChompAndStake();
+            case BattlefieldElementType.ChainChompStake:
+                UpdateChainChompAndStake(dt);
                 break;
-            case Mario64Remake.BattlefieldElementType.KoopaTheQuickRacer:
+            case BattlefieldElementType.KoopaTheQuickRacer:
                 UpdateKoopaRace(dt);
                 break;
-            case Mario64Remake.BattlefieldElementType.WingCapRedBlock:
+            case BattlefieldElementType.WingCapRedBlock:
                 UpdateWingCapBlock(dt);
                 break;
-            case Mario64Remake.BattlefieldElementType.RollingIronBall:
+            case BattlefieldElementType.RollingIronBall:
                 UpdateRollingBall(dt);
                 break;
-            case Mario64Remake.BattlefieldElementType.SeesawBridge:
+            case BattlefieldElementType.SeesawBridge:
                 UpdateSeesaw();
                 break;
+            case BattlefieldElementType.SkyCoinRingCenter:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
     }
 
     private void UpdateKingBobOmb(float dt)
     {
         if (_completed) return;
+        if (_kingFrontBumpCooldown > 0f) _kingFrontBumpCooldown -= dt;
 
-        // Regal waddle on the summit
-        var s = Mathf.Sin(_clock * 1.4f);
-        var pos = _originPos + patrolOrPathOffset * s;
-        pos.y = _originPos.y + Mathf.Abs(Mathf.Sin(_clock * 7f)) * 0.14f;
-        transform.position = pos;
-
-        var yaw = Mathf.Sin(_clock * 1.4f) * 35f;
-        var waddleRoll = Mathf.Sin(_clock * 7f) * 6f;
-        transform.rotation = _originRot * Quaternion.Euler(0f, yaw, waddleRoll);
-
+        var hero = MarioRemakeController.Instance;
         if (secondaryVisualTarget != null)
         {
-            secondaryVisualTarget.Rotate(0f, 0f, 220f * dt, Space.Self);
+            secondaryVisualTarget.Rotate(0f, 0f, (_kingGrabTimer > 0f ? 520f : 220f) * dt, Space.Self);
         }
 
-        // Check if Mario attacks / Ground Pounds / jumps onto King Bob-omb!
-        if (_invulnTimer > 0f) return;
-        var hero = MarioRemakeController.Instance;
-        if (hero == null) return;
+        // Behind-back Grab & Slam Throw animation if triggered
+        if (_kingGrabTimer > 0f)
+        {
+            _kingGrabTimer -= dt;
+            if (hero != null && _kingGrabTimer > 0.25f)
+            {
+                transform.position = Vector3.Lerp(transform.position, hero.transform.position + Vector3.up * 2.2f, 12f * dt);
+                transform.Rotate(0f, 480f * dt, 0f, Space.Self);
+            }
+            else if (_kingGrabTimer <= 0.01f)
+            {
+                transform.position = new Vector3(transform.position.x, _originPos.y, transform.position.z);
+                RegisterHitOnElement();
+            }
+            return;
+        }
 
-        var dist = Vector3.Distance(hero.transform.position, transform.position);
-        if (dist < 3.4f && (hero.transform.position.y > transform.position.y + 0.4f || hero.IsAttackingOrSliding))
+        var flatDistToHero = 999f;
+        if (hero != null)
+        {
+            var toHero = hero.transform.position - transform.position;
+            toHero.y = 0f;
+            flatDistToHero = toHero.magnitude;
+
+            // Pursue hero when Mario is up on the Summit Arena
+            if (Mathf.Abs(hero.transform.position.y - _originPos.y) < 5.5f && flatDistToHero < 16f)
+            {
+                if (toHero.sqrMagnitude > 0.01f)
+                {
+                    var desiredRot = Quaternion.LookRotation(toHero.normalized, Vector3.up);
+                    // Slow turning allows Mario to dash behind King Bob-omb!
+                    transform.rotation = Quaternion.RotateTowards(transform.rotation, desiredRot, 92f * dt);
+                }
+
+                if (flatDistToHero > 2.35f)
+                {
+                    var nextPos = transform.position + transform.forward * (3.15f * dt);
+                    var offset = new Vector2(nextPos.x - _originPos.x, nextPos.z - _originPos.z);
+                    if (offset.magnitude > 7.6f)
+                    {
+                        offset = offset.normalized * 7.6f;
+                        nextPos.x = _originPos.x + offset.x;
+                        nextPos.z = _originPos.z + offset.y;
+                    }
+                    var bounce = Mathf.Abs(Mathf.Sin(_clock * 8.5f)) * 0.16f;
+                    transform.position = new Vector3(nextPos.x, _originPos.y + bounce, nextPos.z);
+                }
+            }
+            else
+            {
+                // Pacing calmly on Summit waiting for challenger
+                var wanderRot = _originRot * Quaternion.Euler(0f, Mathf.Sin(_clock * 0.7f) * 35f, 0f);
+                transform.rotation = Quaternion.Slerp(transform.rotation, wanderRot, 3f * dt);
+                var bounce = Mathf.Abs(Mathf.Sin(_clock * 5.2f)) * 0.08f;
+                transform.position = new Vector3(transform.position.x, _originPos.y + bounce, transform.position.z);
+            }
+        }
+
+        if (visualSubTarget != null)
+        {
+            var swayZ = Mathf.Sin(_clock * 8.5f) * 5.5f;
+            visualSubTarget.localRotation = Quaternion.Euler(0f, 0f, swayZ);
+        }
+
+        // Combat Checks: Behind-back Grab (F) or Jump-Stomp / Ground-Pound / Attack
+        if (_invulnTimer > 0f || hero == null) return;
+
+        var dist3d = Vector3.Distance(hero.transform.position, transform.position);
+        var heroFromKing = hero.transform.position - transform.position;
+        heroFromKing.y = 0f;
+        var dotFront = heroFromKing.sqrMagnitude > 0.01f
+            ? Vector3.Dot(transform.forward, heroFromKing.normalized)
+            : 1f;
+
+        var grabPressed = Keyboard.current != null && Keyboard.current.fKey.wasPressedThisFrame;
+        if (dist3d < 3.4f && dotFront < 0.2f && grabPressed)
+        {
+            _kingGrabTimer = 0.55f;
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayLedgeClimbSound();
+            return;
+        }
+
+        if (dist3d < 3.4f && (hero.transform.position.y > transform.position.y + 0.55f || hero.IsAttackingOrSliding))
         {
             RegisterHitOnElement();
+            if (hero.IsStompingDown) hero.BounceUpFromStomp(1.85f);
+            return;
+        }
+
+        if (flatDistToHero < 2.15f && dotFront > 0.55f && Mathf.Abs(hero.transform.position.y - transform.position.y) < 2.2f && _kingFrontBumpCooldown <= 0f)
+        {
+            _kingFrontBumpCooldown = 1.35f;
+            hero.TakeDamage(1, transform.position);
         }
     }
 
@@ -215,23 +304,113 @@ public class BobOmbBattlefieldController : MonoBehaviour
         }
     }
 
-    private void UpdateChainChompAndStake()
+    private void UpdateChainChompAndStake(float dt)
     {
         if (_completed) return;
 
-        // Animate Chain Chomp lunging & barking on its chain!
-        if (visualSubTarget != null)
+        if (_chompChainLinks == null)
         {
-            var lunge = Mathf.Sin(_clock * 3.8f);
-            var hop = Mathf.Abs(Mathf.Sin(_clock * 7.6f)) * 0.65f;
-            visualSubTarget.localPosition = _subTargetOriginPos + new Vector3(lunge * 1.35f, hop, Mathf.Cos(_clock * 2.5f) * 0.9f);
-            visualSubTarget.localRotation = Quaternion.Euler(Mathf.Sin(_clock * 7.6f) * -14f, _clock * 45f, 0f);
+            var links = new System.Collections.Generic.List<Transform>();
+            for (var c = 1; c <= 6; c++)
+            {
+                var tr = transform.Find($"ChainLink_{c}");
+                if (tr != null) links.Add(tr);
+            }
+            _chompChainLinks = links.ToArray();
+            if (visualSubTarget != null) _chompRestLocalPos = _subTargetOriginPos;
         }
 
-        // Check if Mario Ground Pounds or stomps the Wooden Stake!
-        if (_invulnTimer > 0f) return;
         var hero = MarioRemakeController.Instance;
+        // SM64 AI: Aim & bark-lunge straight toward Mario clamped by chain leash, then yank back!
+        if (visualSubTarget != null)
+        {
+            if (_chompRestLocalPos.sqrMagnitude < 0.01f) _chompRestLocalPos = _subTargetOriginPos;
+            const float chainMaxRadius = 6.2f;
+            var restWorld = transform.TransformPoint(_chompRestLocalPos);
+
+            var targetWorld = restWorld;
+            var pitch = Mathf.Sin(_clock * 5f) * -8f;
+            var yawLook = visualSubTarget.rotation;
+
+            var flatDistFromStake = hero != null
+                ? Vector2.Distance(new Vector2(hero.transform.position.x, hero.transform.position.z), new Vector2(transform.position.x, transform.position.z))
+                : 999f;
+
+            if (hero != null && flatDistFromStake < 12.0f && Mathf.Abs(hero.transform.position.y - transform.position.y) < 5.5f)
+            {
+                _chompCycleTimer += dt;
+                var phase = Mathf.Repeat(_chompCycleTimer, 2.25f);
+                var toHero = hero.transform.position - transform.position;
+                toHero.y = 0f;
+                var dirToHero = toHero.sqrMagnitude > 0.01f ? toHero.normalized : transform.forward;
+                yawLook = Quaternion.LookRotation(dirToHero, Vector3.up);
+
+                var lungeEndWorld = transform.position + dirToHero * chainMaxRadius + Vector3.up * Mathf.Max(1.35f, _chompRestLocalPos.y);
+                var restTargetWorld = transform.position + dirToHero * 3.1f + Vector3.up * Mathf.Max(1.25f, _chompRestLocalPos.y);
+
+                if (phase < 0.45f)
+                {
+                    // Telegraph hop + bark
+                    var u = phase / 0.45f;
+                    targetWorld = Vector3.Lerp(visualSubTarget.position, restTargetWorld + Vector3.up * (Mathf.Sin(u * Mathf.PI) * 0.7f), 10f * dt);
+                    pitch = -18f * Mathf.Sin(u * Mathf.PI);
+                }
+                else if (phase < 0.85f)
+                {
+                    // Aggressive straight-line lunge at Mario until chain pulls taut!
+                    var u = (phase - 0.45f) / 0.40f;
+                    targetWorld = Vector3.Lerp(restTargetWorld, lungeEndWorld, Ease.OutCubic(u));
+                    targetWorld.y += Mathf.Sin(u * Mathf.PI) * 0.95f;
+                    pitch = 14f;
+                }
+                else if (phase < 1.35f)
+                {
+                    // Chain snaps taut & Chomp chomps
+                    targetWorld = lungeEndWorld;
+                    pitch = Mathf.Sin(phase * 32f) * 12f;
+                }
+                else
+                {
+                    // Yank back along chain toward stake
+                    var u = (phase - 1.35f) / 0.90f;
+                    targetWorld = Vector3.Lerp(lungeEndWorld, restTargetWorld, Mathf.SmoothStep(0f, 1f, u));
+                }
+            }
+            else
+            {
+                _chompCycleTimer = 0f;
+                var hop = Mathf.Abs(Mathf.Sin(_clock * 5.2f)) * 0.45f;
+                targetWorld = restWorld + new Vector3(Mathf.Sin(_clock * 2.2f) * 0.6f, hop, Mathf.Cos(_clock * 1.9f) * 0.6f);
+                yawLook = Quaternion.Euler(0f, _clock * 38f, 0f);
+            }
+
+            visualSubTarget.position = Vector3.Lerp(visualSubTarget.position, targetWorld, 1f - Mathf.Exp(-14f * dt));
+            visualSubTarget.rotation = Quaternion.Slerp(visualSubTarget.rotation, yawLook * Quaternion.Euler(pitch, 0f, 0f), 1f - Mathf.Exp(-12f * dt));
+
+            // Keep chain links taut between stake top and Chomp body
+            if (_chompChainLinks.Length > 0)
+            {
+                var stakeTop = transform.position + Vector3.up * 0.65f;
+                var chompBack = visualSubTarget.position - visualSubTarget.forward * 0.65f;
+                for (var c = 0; c < _chompChainLinks.Length; c++)
+                {
+                    var link = _chompChainLinks[c];
+                    if (link == null) continue;
+                    var frac = (c + 1f) / (_chompChainLinks.Length + 1f);
+                    var sag = Vector3.down * (Mathf.Sin(frac * Mathf.PI) * 0.22f);
+                    link.position = Vector3.Lerp(stakeTop, chompBack, frac) + sag;
+                }
+            }
+        }
+
+        // Check if Mario Ground Pounds or stomps the Wooden Stake (or gets bitten by Chain Chomp!)
+        if (_invulnTimer > 0f) return;
         if (hero == null) return;
+
+        if (visualSubTarget != null && Vector3.Distance(hero.transform.position, visualSubTarget.position) < 2.15f && !hero.IsAttackingOrSliding)
+        {
+            hero.TakeDamage(3, visualSubTarget.position);
+        }
 
         var dist = Vector3.Distance(hero.transform.position, transform.position);
         if (!(dist < 2.2f) || !(hero.transform.position.y > transform.position.y + 0.15f)) return;
@@ -270,7 +449,7 @@ public class BobOmbBattlefieldController : MonoBehaviour
         }
 
         if (visualSubTarget != null) visualSubTarget.gameObject.SetActive(false);
-        if (rewardStar != null && (GameManager.Instance == null || GameManager.Instance.currentActNumber == 6))
+        if (rewardStar != null && !rewardStar.IsCollected)
             rewardStar.gameObject.SetActive(true);
     }
 
@@ -379,6 +558,12 @@ public class BobOmbBattlefieldController : MonoBehaviour
         pos.y = _originPos.y + Mathf.Lerp(0f, patrolOrPathOffset.y, t) + Mathf.Abs(Mathf.Sin(t * Mathf.PI * 6f)) * 0.15f;
         transform.position = pos;
         transform.Rotate(260f * dt, 120f * dt, 0f, Space.Self);
+
+        var hero = MarioRemakeController.Instance;
+        if (hero != null && Vector3.Distance(hero.transform.position, pos) < 1.85f)
+        {
+            hero.TakeDamage(2, pos);
+        }
     }
 
     private void UpdateSeesaw()

@@ -24,7 +24,7 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 2800000, guid: 93cf93e903297144fb2be2a3adddbd8b, type: 3}
+        m_Texture: {fileID: 0}
         m_Scale: {x: 6, y: 6}
         m_Offset: {x: 0, y: 0}
     m_Ints: []
@@ -34,7 +34,7 @@ Material:
     - _RimPower: 3.5
     - _RimStrength: 0.25
     m_Colors:
-    - _BaseColor: {r: 0.68, g: 0.65, b: 0.58, a: 1}
+    - _BaseColor: {r: 0.64, g: 0.67, b: 0.7, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _RimColor: {r: 1, g: 0.9490196, b: 0.8627451, a: 1}
     - _ShadowTint: {r: 0.18039216, g: 0.21960784, b: 0.32156864, a: 1}

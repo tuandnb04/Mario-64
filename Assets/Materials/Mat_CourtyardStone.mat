@@ -34,7 +34,7 @@ Material:
     - _RimPower: 3.5
     - _RimStrength: 0.25
     m_Colors:
-    - _BaseColor: {r: 0.55, g: 0.42, b: 0.28, a: 1}
+    - _BaseColor: {r: 0.44, g: 0.5, b: 0.57, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 0}
     - _RimColor: {r: 1, g: 0.94899994, b: 0.863, a: 1}
     - _ShadowTint: {r: 0.17999998, g: 0.21999997, b: 0.32199997, a: 1}

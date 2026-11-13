@@ -1,370 +1,316 @@
 using UnityEngine;
-using UnityEngine.Serialization;
 
 /// <summary>
-/// Full Super Mario 64 Acrobatics Procedural Character Motion:
-/// - Gait bob, limb swing, acceleration pitch lean, turn bank, idle breathe & sway
-/// - Full SM64 Move Set Visual Poses:
-///   - Single / Double / Triple Front-Flip (360° forward somersault)
-///   - Backflip (reverse 360° backward somersault!)
-///   - Side Sommersault (180° twist + aerial flip!)
-///   - Long Jump ("Yahoo!" low-arc forward stretch pose)
-///   - Crouch & Crawl (compressed torso & bent knees)
-///   - Belly Slide / Dive Slide (horizontal stomach slide with arms & legs arched)
-///   - Ground Pound Stall Flip (rapid mid-air tuck spin before slamming down!)
-///   - 3-Hit Punch-Punch-Kick Combo (left punch -> right punch -> leaping roundhouse kick!)
-///   - Jump Kick (mid-air forward karate kick)
-///   - Wall Slide (bracing against wall with friction)
+/// Super Mario Odyssey-Polish Character Animator & Secondary Motion Driver.
+/// - Primary motion drives the rigged Blender SM64_MarioHero Animator (23 skeletal clips)
+///   with snappy crossfade transitions and locomotion speed synchronization.
+/// - Layering: responsive landing squash, jump stretch, sharp-turn banking, and somersault juice
+///   on visualScaleRoot (never fighting skeletal bone transforms!).
+/// - Gracefully falls back to hinge transforms if characterAnimator is absent.
 /// </summary>
 public class ProceduralCharacterMotion : MonoBehaviour
 {
-    [FormerlySerializedAs("VisualRoot")] [Header("Hierarchy Parts")]
-    public Transform visualRoot;
-    [FormerlySerializedAs("BodyPivot")] public Transform bodyPivot;
-    [FormerlySerializedAs("HeadPivot")] public Transform headPivot;
-    [FormerlySerializedAs("CapVisor")] public Transform capVisor;
-    [FormerlySerializedAs("LeftArm")] public Transform leftArm;
-    [FormerlySerializedAs("RightArm")] public Transform rightArm;
-    [FormerlySerializedAs("LeftLeg")] public Transform leftLeg;
-    [FormerlySerializedAs("RightLeg")] public Transform rightLeg;
-    [FormerlySerializedAs("Backpack")] public Transform backpack;
+    [Header("Rigged Blender Animator & Secondary Scale Root")]
+    public Animator characterAnimator;
+    public Transform visualScaleRoot;
 
-    public Transform VisualRoot { get => visualRoot; set => visualRoot = value; }
-    public Transform BodyPivot { get => bodyPivot; set => bodyPivot = value; }
-    public Transform HeadPivot { get => headPivot; set => headPivot = value; }
-    public Transform CapVisor { get => capVisor; set => capVisor = value; }
-    public Transform LeftArm { get => leftArm; set => leftArm = value; }
-    public Transform RightArm { get => rightArm; set => rightArm = value; }
-    public Transform LeftLeg { get => leftLeg; set => leftLeg = value; }
-    public Transform RightLeg { get => rightLeg; set => rightLeg = value; }
-    public Transform Backpack { get => backpack; set => backpack = value; }
+    [Header("Legacy Fallback Limb Transforms")]
+    public Transform bodyPivot;
+    public Transform headPivot;
+    public Transform capVisor;
+    public Transform leftArm;
+    public Transform rightArm;
+    public Transform leftLeg;
+    public Transform rightLeg;
+    public Transform backpack;
 
-    [Header("Tunables")]
-    public float stepFreq = 2.65f;
-    public float bobAmp = 0.088f;
-    public float limbSwingDeg = 42f;
-    public float leanPitchDeg = 10.5f;
-    public float leanBankDeg = 8.0f;
-    public float idleBreatheFreq = 0.65f;
-    public float idleBreatheAmp = 0.026f;
-    public float idleSwayFreq = 0.32f;
-    public float idleSwayDeg = 6.5f;
+    [Header("Locomotion State Inputs (Driven by MarioRemakeController)")]
+    [Range(0f, 1.5f)] public float NormalizedSpeed;
+    public Vector3 PlanarVelocity;
+    public bool IsGrounded = true;
+    public int JumpStage;
+    public bool IsDiving;
+    public bool IsCrouching;
+    public bool IsSliding;
+    public bool IsWallSliding;
+    public bool IsGroundPounding;
+    public float GroundPoundStallNormalized;
+    public bool IsBackflipping;
+    public bool IsSideFlipping;
+    public bool IsLongJumping;
+    public int AttackStage; // 0 = none, 1 = PunchL, 2 = PunchR, 3 = Kick, 4 = AirKick, 5 = SweepKick, 6 = SlideKick, 7 = SpinAttack, 8 = CarryThrow
+    public float AttackProgress;
 
-    private float _gaitBlend;
-    private float _stepClock;
-    private float _idleClock;
-    private float _airFlipAngle;
-    private Vector3 _baseBodyLocalPos;
-    private Quaternion _baseBodyLocalRot;
-    private Quaternion _baseHeadLocalRot;
-    private Quaternion _baseVisorLocalRot;
-    private Quaternion _baseBackpackLocalRot;
-    private Vector3 _baseVisualScale = Vector3.one;
-    private Vector3 _squashScale = Vector3.one;
+    [Header("Extended Odyssey / SM64 Feel Flags")]
+    public bool IsSwimming;
+    public bool IsLedgeHanging;
+    public bool IsSpinningBowser;
+    public bool IsSkidding;
+    public bool IsRolling;
+    public bool IsSpinAttacking;
+    public bool IsSlopeSliding;
+    public bool IsClimbingPole;
+    public bool IsPoleHandstand;
+    public float PoleClimbSpeed;
+    public bool IsCarryingObject;
+    public float TurnBankRate;
 
-    private Vector3 _prevPlanarVel;
-    private float _currentPitchLean;
-    private float _currentBankLean;
-    private float _secondaryLagAngle;
-    private float _footstepTimer;
-    private Coroutine _squashRoutine;
+    private string _currentAnimState = "";
+    private Vector3 _scaleVelocity = Vector3.one;
+    private float _squashAmount;
+    private float _stretchAmount;
+    private float _bankAngleDeg;
+    private float _forwardLeanDeg;
 
-    public ProceduralCharacterMotion(Transform nearestPointOfInterest)
+    private void Awake()
     {
-        NearestPointOfInterest = nearestPointOfInterest;
+        if (characterAnimator == null) characterAnimator = GetComponentInChildren<Animator>(true);
+        if (visualScaleRoot == null)
+        {
+            visualScaleRoot = characterAnimator != null ? characterAnimator.transform : transform;
+        }
     }
 
-    public float NormalizedSpeed { get; set; }
-    public Vector3 PlanarVelocity { get; set; }
-    public bool IsGrounded { get; set; } = true;
-    public int JumpStage { get; set; }
-    public bool IsDiving { get; set; }
-    public bool IsCrouching { get; set; }
-    public bool IsSliding { get; set; }
-    public bool IsWallSliding { get; set; }
-    public bool IsGroundPounding { get; set; }
-    public float GroundPoundStallNormalized { get; set; }
-    public bool IsBackflipping { get; set; }
-    public bool IsSideFlipping { get; set; }
-    public bool IsLongJumping { get; set; }
-    public bool IsSwimming { get; set; }
-    public float SwimPitchAngle { get; set; }
-    public int AttackStage { get; set; } // 0 = none, 1 = Punch L, 2 = Punch R, 3 = Kick, 4 = Air Kick
-    public float AttackProgress { get; set; }
-    private Transform NearestPointOfInterest { get; }
-
-    private void Start()
+    public void TriggerJumpStretch(int stage = 1)
     {
-        InitializeBaselines();
+        _stretchAmount = stage >= 3 ? 0.24f : (stage == 2 ? 0.19f : 0.15f);
+        _squashAmount = 0f;
     }
 
-    private void InitializeBaselines()
+    public void TriggerLandSquash(bool heavy)
     {
-        if (visualRoot != null) _baseVisualScale = visualRoot.localScale;
-        if (bodyPivot != null)
-        {
-            _baseBodyLocalPos = bodyPivot.localPosition;
-            _baseBodyLocalRot = bodyPivot.localRotation;
-        }
-        if (headPivot != null) _baseHeadLocalRot = headPivot.localRotation;
-        if (capVisor != null) _baseVisorLocalRot = capVisor.localRotation;
-        if (backpack != null) _baseBackpackLocalRot = backpack.localRotation;
+        TriggerLandSquash(heavy ? 1.45f : 1.0f);
     }
 
-    private void Update()
+    public void TriggerLandSquash(float intensity = 1f)
     {
-        if (bodyPivot == null) return;
+        _squashAmount = Mathf.Clamp(0.22f * intensity, 0.12f, 0.30f);
+        _stretchAmount = 0f;
+    }
 
-        var dt = Time.deltaTime;
-        if (dt <= 0.00001f) return;
+    private void LateUpdate()
+    {
+        var dt = Time.deltaTime > 0.0001f ? Time.deltaTime : 0.016f;
 
-        var targetBlend = Mathf.Clamp01(NormalizedSpeed);
-        var blendRate = targetBlend > _gaitBlend ? 9f : (1f / 0.25f);
-        _gaitBlend = Mathf.MoveTowards(_gaitBlend, targetBlend, dt * blendRate);
-
-        _stepClock += dt * stepFreq * Mathf.Lerp(0.65f, 1.25f, _gaitBlend);
-        _idleClock += dt;
-
-        if (IsGrounded)
+        if (characterAnimator == null)
         {
-            _airFlipAngle = 0f;
+            characterAnimator = GetComponentInChildren<Animator>(true);
+            if (characterAnimator != null && visualScaleRoot == null) visualScaleRoot = characterAnimator.transform;
         }
 
-        // 1. Gait bob + Crouch offset + Slide offset
-        var gaitPhase = _stepClock * Mathf.PI * 2f;
-        var gaitY = Mathf.Abs(Mathf.Sin(gaitPhase)) * bobAmp * _gaitBlend;
-        var gaitRoll = Mathf.Sin(gaitPhase * 0.5f) * 3.0f * _gaitBlend;
+        UpdateAnimatorState();
+        UpdateSecondaryJuice(dt);
+        if (characterAnimator == null)
+        {
+            UpdateLegacyHingeFallback(dt);
+        }
+    }
 
-        var idleBreatheY = Mathf.Sin(_idleClock * idleBreatheFreq * Mathf.PI * 2f) * idleBreatheAmp * (1f - _gaitBlend * 0.7f);
-        var idleSway = Mathf.Sin(_idleClock * idleSwayFreq * Mathf.PI * 2f) * idleSwayDeg * (1f - _gaitBlend * 0.6f);
+    private void UpdateAnimatorState()
+    {
+        if (characterAnimator == null || characterAnimator.runtimeAnimatorController == null) return;
 
-        var verticalOffset = gaitY + idleBreatheY;
-        if (IsSwimming)
-        {
-            verticalOffset = -0.15f + Mathf.Sin(_idleClock * 2.8f) * 0.08f;
-        }
-        else if (IsSliding || IsDiving)
-        {
-            verticalOffset = -0.32f;
-        }
-        else if (IsCrouching)
-        {
-            verticalOffset = -0.22f + Mathf.Abs(Mathf.Sin(gaitPhase)) * 0.03f * _gaitBlend;
-        }
+        string desiredState;
+        float desiredSpeed = 1f;
+        float blendDuration = 0.08f;
 
-        bodyPivot.localPosition = _baseBodyLocalPos + new Vector3(0f, verticalOffset, 0f);
-
-        // 2. Acceleration pitch lean, turn bank, & Acrobatics Somersaults!
-        var accel = (PlanarVelocity - _prevPlanarVel) / Mathf.Max(dt, 0.001f);
-        _prevPlanarVel = PlanarVelocity;
-
-        var targetPitch = NormalizedSpeed * leanPitchDeg + Mathf.Clamp(accel.magnitude * 0.15f, -4f, 7f) * _gaitBlend;
-        if (IsSwimming)
+        if (IsSpinningBowser)
         {
-            targetPitch = 72f + SwimPitchAngle; // Horizontal swimming body posture!
+            desiredState = "SpinThrow";
+            desiredSpeed = 1.4f;
+            blendDuration = 0.06f;
         }
-        else if (IsDiving || IsSliding)
+        else if (IsClimbingPole)
         {
-            targetPitch = 78f; // Belly-down slide!
+            if (IsPoleHandstand)
+            {
+                desiredState = "PoleHandstand";
+                desiredSpeed = 1f;
+            }
+            else if (Mathf.Abs(PoleClimbSpeed) > 0.12f)
+            {
+                desiredState = "PoleClimb";
+                desiredSpeed = Mathf.Lerp(0.85f, 1.55f, Mathf.Abs(PoleClimbSpeed) / 4.5f);
+            }
+            else
+            {
+                desiredState = "PoleIdle";
+                desiredSpeed = 1f;
+            }
+            blendDuration = 0.06f;
         }
-        else if (IsCrouching)
+        else if (IsLedgeHanging)
         {
-            targetPitch = 24f;
+            desiredState = "LedgeHang";
+            desiredSpeed = 1f;
+            blendDuration = 0.06f;
         }
-        else if (IsLongJumping && !IsGrounded)
+        else if (IsSwimming)
         {
-            targetPitch = -18f; // Feet-forward Long Jump pose!
+            desiredState = "Swim";
+            desiredSpeed = Mathf.Lerp(0.75f, 1.5f, NormalizedSpeed);
+            blendDuration = 0.10f;
+        }
+        else if (IsGroundPounding)
+        {
+            desiredState = GroundPoundStallNormalized > 0.01f ? "GroundPoundStall" : "GroundPoundDrop";
+            desiredSpeed = GroundPoundStallNormalized > 0.01f ? 1.8f : 1.0f;
+            blendDuration = 0.05f;
+        }
+        else if (IsSpinAttacking)
+        {
+            desiredState = "SpinAttack";
+            desiredSpeed = 1.35f;
+            blendDuration = 0.04f;
+        }
+        else if (IsRolling)
+        {
+            desiredState = "Roll";
+            desiredSpeed = Mathf.Lerp(1.0f, 1.85f, Mathf.Clamp01(NormalizedSpeed));
+            blendDuration = 0.04f;
+        }
+        else if (AttackStage > 0)
+        {
+            desiredState = AttackStage switch
+            {
+                1 => "PunchL",
+                2 => "PunchR",
+                3 => "Kick",
+                4 => "AirKick",
+                5 => "SweepKick",
+                6 => "SlideKick",
+                7 => "SpinAttack",
+                8 => "CarryThrow",
+                _ => "PunchL"
+            };
+            desiredSpeed = AttackStage == 5 ? 1.35f : 1.25f;
+            blendDuration = 0.04f;
+        }
+        else if (IsSlopeSliding)
+        {
+            desiredState = "SlopeSlide";
+            desiredSpeed = 1.1f;
+            blendDuration = 0.06f;
+        }
+        else if (IsSliding)
+        {
+            desiredState = "BellySlide";
+            desiredSpeed = 1.15f;
+            blendDuration = 0.06f;
+        }
+        else if (IsDiving)
+        {
+            desiredState = "Dive";
+            desiredSpeed = 1.2f;
+            blendDuration = 0.05f;
         }
         else if (IsWallSliding)
         {
-            targetPitch = -12f;
+            desiredState = "WallSlide";
+            desiredSpeed = 1.0f;
+            blendDuration = 0.06f;
         }
-
-        var localAccel = transform.InverseTransformDirection(accel);
-        var targetBank = Mathf.Clamp(-localAccel.x * 0.42f, -leanBankDeg, leanBankDeg) * _gaitBlend;
-
-        _currentPitchLean = Mathf.Lerp(_currentPitchLean, targetPitch, 1f - Mathf.Exp(-12f * dt));
-        _currentBankLean = Mathf.Lerp(_currentBankLean, targetBank, 1f - Mathf.Exp(-12f * dt));
-
-        // Aerial Flip Angles (Triple Jump, Backflip, Side Somersault, Ground Pound Stall)
-        var extraPitchFlip = 0f;
-        var extraYawTwist = 0f;
-        if (!IsGrounded)
+        else if (IsCarryingObject)
         {
-            if (IsGroundPounding && GroundPoundStallNormalized > 0f)
-            {
-                extraPitchFlip = (1f - GroundPoundStallNormalized) * 360f;
-            }
-            else if (IsBackflipping)
-            {
-                _airFlipAngle -= dt * 560f;
-                extraPitchFlip = _airFlipAngle;
-            }
-            else if (IsSideFlipping)
-            {
-                _airFlipAngle += dt * 520f;
-                extraPitchFlip = _airFlipAngle;
-                extraYawTwist = Mathf.Clamp01( Mathf.Abs(_airFlipAngle) / 180f ) * 180f;
-            }
-            else if (JumpStage == 3 && !IsDiving)
-            {
-                _airFlipAngle += dt * 620f;
-                extraPitchFlip = _airFlipAngle;
-            }
+            desiredState = NormalizedSpeed > 0.08f ? "CarryWalk" : "CarryIdle";
+            desiredSpeed = NormalizedSpeed > 0.08f ? Mathf.Lerp(0.75f, 1.35f, NormalizedSpeed) : 1f;
+            blendDuration = 0.07f;
         }
-
-        bodyPivot.localRotation = _baseBodyLocalRot * Quaternion.Euler(
-            _currentPitchLean + extraPitchFlip,
-            idleSway * 0.35f + extraYawTwist,
-            _currentBankLean + gaitRoll);
-
-        // 3. Limb Swing + Punch / Kick / Slide / Crouch Poses
-        var swing = Mathf.Sin(gaitPhase) * limbSwingDeg * _gaitBlend;
-        var airPose = IsGrounded ? 0f : 32f;
-
-        var lLegPitch = swing - airPose;
-        var rLegPitch = -swing + airPose * 0.6f;
-        var lArmPitch = -swing * 0.9f - airPose * 1.25f;
-        var rArmPitch = swing * 0.9f - airPose * 1.25f;
-        var lArmRoll = 14f;
-        var rArmRoll = -14f;
-
-        if (IsSwimming)
+        else if (!IsGrounded)
         {
-            // Authentic SM64 Breaststroke arms + Flutter Kick legs!
-            var swimCycle = _idleClock * 5.2f;
-            var stroke = Mathf.Sin(swimCycle);
-            lArmPitch = -115f + stroke * 55f;
-            rArmPitch = -115f + stroke * 55f;
-            lArmRoll = 42f + Mathf.Cos(swimCycle) * 28f;
-            rArmRoll = -42f - Mathf.Cos(swimCycle) * 28f;
-            lLegPitch = Mathf.Sin(swimCycle * 2.2f) * 32f;
-            rLegPitch = -Mathf.Sin(swimCycle * 2.2f) * 32f;
-        }
-        else if (IsSliding || IsDiving)
-        {
-            // Superman / Belly-slide pose!
-            lArmPitch = -135f;
-            rArmPitch = -135f;
-            lArmRoll = 28f;
-            rArmRoll = -28f;
-            lLegPitch = 35f;
-            rLegPitch = 35f;
+            if (IsLongJumping) desiredState = "LongJump";
+            else if (IsBackflipping) desiredState = "Backflip";
+            else if (IsSideFlipping) desiredState = "SideFlip";
+            else if (JumpStage >= 3) desiredState = "TripleFlip";
+            else if (JumpStage == 2) desiredState = "JumpDouble";
+            else desiredState = "JumpSingle";
+            desiredSpeed = JumpStage >= 3 || IsBackflipping || IsSideFlipping ? 1.25f : 1.0f;
+            blendDuration = 0.06f;
         }
         else if (IsCrouching)
         {
-            lLegPitch = -55f + swing * 0.4f;
-            rLegPitch = -55f - swing * 0.4f;
-            lArmPitch = 25f;
-            rArmPitch = 25f;
+            desiredState = NormalizedSpeed > 0.08f ? "Crawl" : "Crouch";
+            desiredSpeed = NormalizedSpeed > 0.08f ? Mathf.Lerp(0.8f, 1.5f, NormalizedSpeed) : 1f;
+            blendDuration = 0.07f;
         }
-        else if (IsLongJumping && !IsGrounded)
+        else if (NormalizedSpeed > 0.55f)
         {
-            lLegPitch = -65f;
-            rLegPitch = -45f;
-            lArmPitch = -110f;
-            rArmPitch = -110f;
+            desiredState = "Run";
+            desiredSpeed = Mathf.Lerp(0.88f, 1.48f, (NormalizedSpeed - 0.55f) / 0.65f);
+            blendDuration = 0.08f;
+        }
+        else if (NormalizedSpeed > 0.07f)
+        {
+            desiredState = "Walk";
+            desiredSpeed = Mathf.Lerp(0.65f, 1.35f, NormalizedSpeed / 0.55f);
+            blendDuration = 0.09f;
+        }
+        else
+        {
+            desiredState = "Idle";
+            desiredSpeed = 1f;
+            blendDuration = 0.12f;
         }
 
-        // Punch-Punch-Kick & Air Kick Overrides!
-        if (AttackStage > 0)
+        characterAnimator.speed = desiredSpeed;
+        if (desiredState != _currentAnimState)
         {
-            var punchArc = Mathf.Sin(AttackProgress * Mathf.PI);
-            switch (AttackStage)
+            _currentAnimState = desiredState;
+            var hash = Animator.StringToHash(desiredState);
+            if (!characterAnimator.HasState(0, hash))
             {
-                case 1: // Left Punch ("Yah!")
-                    lArmPitch = Mathf.Lerp(lArmPitch, -95f, punchArc);
-                    break;
-                case 2: // Right Punch ("Wah!")
-                    rArmPitch = Mathf.Lerp(rArmPitch, -95f, punchArc);
-                    break;
-                case 3: // Roundhouse / Heavy Kick ("Hoo!")
-                case 4: // Jump Kick!
-                    rLegPitch = Mathf.Lerp(rLegPitch, -88f, punchArc);
-                    lArmPitch = -45f;
-                    rArmPitch = 45f;
-                    break;
-            }
-        }
-
-        if (leftLeg != null)
-            leftLeg.localRotation = Quaternion.Euler(lLegPitch, 0f, -3f);
-        if (rightLeg != null)
-            rightLeg.localRotation = Quaternion.Euler(rLegPitch, 0f, 3f);
-        if (leftArm != null)
-            leftArm.localRotation = Quaternion.Euler(lArmPitch, 0f, lArmRoll);
-        if (rightArm != null)
-            rightArm.localRotation = Quaternion.Euler(rArmPitch, 0f, rArmRoll);
-
-        // 4. Secondary motion (exponential damp lag on cap visor & backpack)
-        var targetLag = -gaitY * 140f + (_currentPitchLean * 0.45f) + idleSway;
-        _secondaryLagAngle = Mathf.Lerp(_secondaryLagAngle, targetLag, 1f - Mathf.Exp(-12f * dt));
-
-        if (capVisor != null)
-            capVisor.localRotation = _baseVisorLocalRot * Quaternion.Euler(_secondaryLagAngle * 0.45f, 0f, 0f);
-        if (backpack != null)
-            backpack.localRotation = _baseBackpackLocalRot * Quaternion.Euler(-_secondaryLagAngle * 0.6f, idleSway, 0f);
-
-        // 5. Head look
-        if (headPivot != null)
-        {
-            var headYaw = idleSway * 0.5f;
-            var headPitch = (IsSliding || IsDiving) ? -48f : (-4f + Mathf.Sin(_idleClock * idleBreatheFreq * Mathf.PI * 2f) * 2.5f);
-
-            if (NearestPointOfInterest != null && !IsSliding && !IsDiving)
-            {
-                var toPoi = NearestPointOfInterest.position - transform.position;
-                toPoi.y = 0f;
-                if (toPoi.sqrMagnitude is > 0.5f and < 225f)
+                string fallback = desiredState switch
                 {
-                    var signedYaw = Vector3.SignedAngle(transform.forward, toPoi.normalized, Vector3.up);
-                    headYaw = Mathf.Clamp(signedYaw * 0.45f, -52f, 52f);
-                }
+                    "AirKick" => "Kick",
+                    "SlideKick" or "SlopeSlide" => "BellySlide",
+                    "Roll" => "TripleFlip",
+                    "SpinAttack" => "SpinThrow",
+                    "PoleClimb" or "PoleIdle" or "PoleHandstand" => "LedgeHang",
+                    "CarryIdle" => "Idle",
+                    "CarryWalk" => "Walk",
+                    "CarryThrow" => "PunchR",
+                    _ => "Idle"
+                };
+                hash = Animator.StringToHash(fallback);
             }
-
-            var targetHead = _baseHeadLocalRot * Quaternion.Euler(headPitch, headYaw, 0f);
-            headPivot.localRotation = Quaternion.Slerp(headPivot.localRotation, targetHead, 1f - Mathf.Exp(-8f * dt));
+            if (characterAnimator.HasState(0, hash))
+            {
+                characterAnimator.CrossFadeInFixedTime(hash, blendDuration, 0);
+            }
         }
-
-        // 6. Apply squash & stretch onto VisualRoot
-        if (visualRoot != null)
-        {
-            var crouchScale = IsCrouching && !IsSliding ? new Vector3(1.12f, 0.78f, 1.12f) : Vector3.one;
-            visualRoot.localScale = Vector3.Scale(_baseVisualScale, Vector3.Scale(_squashScale, crouchScale));
-        }
-
-        // 7. Footstep & Slide dust puffs
-        if (!IsGrounded || (!(_gaitBlend > 0.35f) && !IsSliding && !IsWallSliding)) return;
-        var puffRate = (IsSliding || IsWallSliding) ? 9f : (stepFreq * 2f);
-        _footstepTimer += dt * puffRate;
-        if (!(_footstepTimer >= 1f)) return;
-        _footstepTimer -= 1f;
-        if (VFXPool.Instance != null)
-            VFXPool.Instance.SpawnFootstepPuff(transform.position + Vector3.up * 0.05f);
     }
 
-    public void TriggerJumpStretch(int stage)
+    private void UpdateSecondaryJuice(float dt)
     {
-        if (_squashRoutine != null) StopCoroutine(_squashRoutine);
-        var stretchY = 1.14f + (stage * 0.045f);
-        var squashXZ = 1f / Mathf.Sqrt(stretchY);
-        _squashRoutine = StartCoroutine(AnimateSquash(new Vector3(squashXZ, stretchY, squashXZ), 0.16f));
+        if (visualScaleRoot == null) return;
+
+        _squashAmount = Mathf.MoveTowards(_squashAmount, 0f, dt * 2.1f);
+        _stretchAmount = Mathf.MoveTowards(_stretchAmount, 0f, dt * 1.9f);
+
+        float sy = 1f - _squashAmount + _stretchAmount;
+        float sxz = 1f + (_squashAmount * 0.65f) - (_stretchAmount * 0.42f);
+
+        // Subtle skid lean or high-speed turn bank
+        float targetBank = IsGrounded && NormalizedSpeed > 0.25f ? Mathf.Clamp(-TurnBankRate * 0.06f, -15f, 15f) : 0f;
+        float targetLean = IsSkidding ? -16f : (IsGrounded && NormalizedSpeed > 0.7f ? 7f : 0f);
+        _bankAngleDeg = Mathf.Lerp(_bankAngleDeg, targetBank, 1f - Mathf.Exp(-14f * dt));
+        _forwardLeanDeg = Mathf.Lerp(_forwardLeanDeg, targetLean, 1f - Mathf.Exp(-16f * dt));
+
+        var targetScale = new Vector3(sxz, sy, sxz);
+        _scaleVelocity = Vector3.Lerp(_scaleVelocity, targetScale, 1f - Mathf.Exp(-24f * dt));
+        visualScaleRoot.localScale = _scaleVelocity;
+        visualScaleRoot.localRotation = Quaternion.Euler(_forwardLeanDeg, 0f, _bankAngleDeg);
     }
 
-    public void TriggerLandSquash(bool heavy = false)
+    private void UpdateLegacyHingeFallback(float dt)
     {
-        if (_squashRoutine != null) StopCoroutine(_squashRoutine);
-        var impact = heavy ? new Vector3(1.26f, 0.72f, 1.26f) : new Vector3(1.14f, 0.84f, 1.14f);
-        _squashRoutine = StartCoroutine(AnimateSquash(impact, heavy ? 0.19f : 0.12f));
-    }
-
-    private System.Collections.IEnumerator AnimateSquash(Vector3 peakScale, float duration)
-    {
-        _squashScale = peakScale;
-        yield return Ease.Tween(duration, t =>
-        {
-            _squashScale = Vector3.LerpUnclamped(peakScale, Vector3.one, Ease.OutBack(t));
-        }, Ease.OutCubic, unscaled: false);
-        _squashScale = Vector3.one;
+        if (bodyPivot == null) return;
+        float lean = IsDiving ? 58f : (IsCrouching ? 24f : NormalizedSpeed * 12f);
+        bodyPivot.localRotation = Quaternion.Slerp(bodyPivot.localRotation, Quaternion.Euler(lean, 0f, 0f), 14f * dt);
+        float swing = Mathf.Sin(Time.time * Mathf.Lerp(5f, 13f, NormalizedSpeed)) * 38f * NormalizedSpeed;
+        if (leftLeg != null) leftLeg.localRotation = Quaternion.Euler(swing, 0f, 0f);
+        if (rightLeg != null) rightLeg.localRotation = Quaternion.Euler(-swing, 0f, 0f);
+        if (leftArm != null) leftArm.localRotation = Quaternion.Euler(-swing * 0.8f, 0f, 0f);
+        if (rightArm != null) rightArm.localRotation = Quaternion.Euler(swing * 0.8f, 0f, 0f);
     }
 }

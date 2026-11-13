@@ -11,14 +11,14 @@ using UnityEngine.Serialization;
 /// </summary>
 public class VFXPool : MonoBehaviour
 {
-    private static VFXPool _instance;
+    private static VFXPool instance;
     public static VFXPool Instance
     {
         get
         {
-            if (_instance == null) _instance = FindAnyObjectByType<VFXPool>();
-            if (_instance != null) _instance.EnsureInitialized();
-            return _instance;
+            if (instance == null) instance = FindAnyObjectByType<VFXPool>();
+            if (instance != null) instance.EnsureInitialized();
+            return instance;
         }
     }
 
@@ -34,12 +34,12 @@ public class VFXPool : MonoBehaviour
 
     private void Awake()
     {
-        if (_instance != null && _instance != this)
+        if (instance != null && instance != this)
         {
             Destroy(gameObject);
             return;
         }
-        _instance = this;
+        instance = this;
         EnsureInitialized();
     }
 
@@ -81,7 +81,9 @@ public class VFXPool : MonoBehaviour
             },
             actionOnDestroy: ps =>
             {
-                if (ps != null) Destroy(ps.gameObject);
+                if (ps == null) return;
+                if (Application.isPlaying) Destroy(ps.gameObject);
+                else DestroyImmediate(ps.gameObject);
             },
             collectionCheck: false,
             defaultCapacity: 6,
@@ -102,7 +104,9 @@ public class VFXPool : MonoBehaviour
             },
             actionOnDestroy: ps =>
             {
-                if (ps != null) Destroy(ps.gameObject);
+                if (ps == null) return;
+                if (Application.isPlaying) Destroy(ps.gameObject);
+                else DestroyImmediate(ps.gameObject);
             },
             collectionCheck: false,
             defaultCapacity: 6,
@@ -337,7 +341,7 @@ public class VFXPool : MonoBehaviour
         MilestoneConfetti.Play();
     }
 
-    private System.Collections.IEnumerator ReleaseAfterDelay(ObjectPool<ParticleSystem> pool, ParticleSystem ps, float delay)
+    private static System.Collections.IEnumerator ReleaseAfterDelay(ObjectPool<ParticleSystem> pool, ParticleSystem ps, float delay)
     {
         yield return new WaitForSecondsRealtime(delay);
         if (ps != null && ps.gameObject.activeSelf)

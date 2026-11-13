@@ -29,6 +29,9 @@ public class WhompBossController : MonoBehaviour
     public int currentHealth = 3;
     public float pursueSpeed = 2.4f;
     public float turnSpeed = 3.5f;
+    public float maxPatrolRadius = 4.6f;
+    public Material coinMaterial;
+    public StarCoinCollectible coinPrefab;
     public Transform leftLeg;
     public Transform rightLeg;
     public Transform leftArm;
@@ -121,13 +124,13 @@ public class WhompBossController : MonoBehaviour
                 UpdatePursuitState(hero, dt);
                 break;
             case 1: // Rearing back and Body Slamming Face-Down
-                UpdateSlamWindupState(hero, dt);
+                UpdateSlamWindupState(hero);
                 break;
             case 2: // Face-down on stone! Vulnerable to Ground Pound on the X-Bandage!
-                UpdateVulnerableState(hero, dt);
+                UpdateVulnerableState();
                 break;
             case 3: // Recovering and standing back up
-                UpdateStandUpState(dt);
+                UpdateStandUpState();
                 break;
         }
     }
@@ -147,10 +150,19 @@ public class WhompBossController : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, turnSpeed * dt);
         }
 
-        // Stomp forward
+        // Stomp forward while remaining clamped inside summit/ramp patrol bounds
         var speedMod = 1f + (maxHealth - currentHealth) * 0.35f;
         var currentSpeed = pursueSpeed * speedMod;
-        transform.position += transform.forward * (currentSpeed * dt);
+        var nextPos = transform.position + transform.forward * (currentSpeed * dt);
+        nextPos.y = _origin.y;
+        var flatOffset = new Vector2(nextPos.x - _origin.x, nextPos.z - _origin.z);
+        if (flatOffset.magnitude > maxPatrolRadius)
+        {
+            flatOffset = flatOffset.normalized * maxPatrolRadius;
+            nextPos.x = _origin.x + flatOffset.x;
+            nextPos.z = _origin.z + flatOffset.y;
+        }
+        transform.position = nextPos;
 
         // Footstep clomping & screen shake
         _footstepTimer += dt * (3.4f * speedMod);
@@ -184,7 +196,7 @@ public class WhompBossController : MonoBehaviour
         }
     }
 
-    private void UpdateSlamWindupState(MarioRemakeController hero, float dt)
+    private void UpdateSlamWindupState(MarioRemakeController hero)
     {
         // 0.0s..0.35s: Rear back slightly with angry grunt
         // 0.35s..0.70s: Slam forward flat 90 degrees onto the ground!
@@ -195,19 +207,23 @@ public class WhompBossController : MonoBehaviour
             var rearT = t / 0.45f;
             var tiltBack = Mathf.Lerp(0f, -18f, rearT);
             transform.rotation = Quaternion.Euler(tiltBack, transform.eulerAngles.y, 0f);
-            transform.position += Vector3.up * (2.8f * dt);
+            var hopY = Mathf.Sin(rearT * Mathf.PI * 0.5f) * 0.75f;
+            transform.position = new Vector3(transform.position.x, _origin.y + hopY, transform.position.z);
         }
         else
         {
             var slamT = Mathf.Clamp01((t - 0.45f) / 0.55f);
             var pitch = Mathf.Lerp(-18f, 90f, slamT * slamT);
             transform.rotation = Quaternion.Euler(pitch, transform.eulerAngles.y, 0f);
+            var dropY = Mathf.Lerp(0.75f, 0f, slamT * slamT);
+            transform.position = new Vector3(transform.position.x, _origin.y + dropY, transform.position.z);
 
             if (slamT >= 1f)
             {
                 // CRUNCH! Slammed face-down onto the stone arena!
                 _state = 2;
                 _stateTimer = 0f;
+                transform.position = new Vector3(transform.position.x, _origin.y, transform.position.z);
                 transform.rotation = Quaternion.Euler(90f, transform.eulerAngles.y, 0f);
 
                 if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
@@ -222,15 +238,14 @@ public class WhompBossController : MonoBehaviour
                     hero.impulseSource.GenerateImpulse(0.48f); // Heavy impact camera shake!
                 }
 
-                // Check if Mario was directly underneath or in front of the slamming slab (takes damage/knockback!)
+                // Check if Mario was directly underneath or in front of the slamming slab
                 if (hero != null)
                 {
                     var slamHitCenter = transform.position + transform.up * (isKingBoss ? 1.8f : 1.0f);
                     var distToHero = Vector3.Distance(hero.transform.position, slamHitCenter);
-                    var crushRadius = isKingBoss ? 3.2f : 1.9f;
-                    if (distToHero < crushRadius && hero.transform.position.y < transform.position.y + 1.2f)
+                    var crushRadius = isKingBoss ? 2.4f : 1.45f;
+                    if (distToHero < crushRadius && hero.transform.position.y < transform.position.y + 1.1f)
                     {
-                        var knockDir = (hero.transform.position - transform.position).normalized + Vector3.up * 0.65f;
                         hero.ResetToSpawn();
                     }
                 }
@@ -238,7 +253,7 @@ public class WhompBossController : MonoBehaviour
         }
     }
 
-    private void UpdateVulnerableState(MarioRemakeController hero, float dt)
+    private void UpdateVulnerableState()
     {
         // Check if Mario jumps on his back and executes a Ground Pound!
         CheckMarioGroundPoundHit();
@@ -251,17 +266,15 @@ public class WhompBossController : MonoBehaviour
         }
     }
 
-    private void UpdateStandUpState(float dt)
+    private void UpdateStandUpState()
     {
         var t = Mathf.Clamp01(_stateTimer / 0.65f);
         var pitch = Mathf.Lerp(90f, 0f, Ease.OutCubic(t));
         transform.rotation = Quaternion.Euler(pitch, transform.eulerAngles.y, 0f);
 
-        if (t >= 1f)
-        {
-            _state = 0;
-            _stateTimer = 0f;
-        }
+        if (!(t >= 1f)) return;
+        _state = 0;
+        _stateTimer = 0f;
     }
 
     private void CheckMarioGroundPoundHit()
@@ -367,14 +380,34 @@ public class WhompBossController : MonoBehaviour
             {
                 var ang = c * (Mathf.PI * 2f / 5f);
                 var coinPos = transform.position + new Vector3(Mathf.Cos(ang) * 1.3f, 1.0f, Mathf.Sin(ang) * 1.3f);
-                var coin = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                coin.name = $"WhompDropCoin_{c + 1}";
+                if (coinPrefab != null)
+                {
+                    var spawned = Instantiate(coinPrefab, coinPos, Quaternion.Euler(0f, c * 36f, 0f));
+                    spawned.name = $"WhompDropCoin_{c + 1}";
+                    spawned.kind = CollectibleKind.YellowCoin;
+                    spawned.spinSpeed = 160f;
+                    continue;
+                }
+
+                var coin = new GameObject($"WhompDropCoin_{c + 1}");
                 coin.transform.position = coinPos;
                 coin.transform.localScale = new Vector3(0.65f, 0.07f, 0.65f);
                 coin.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
 
-                var matGold = Resources.Load<Material>("M_JRB_StarGold");
-                if (matGold != null) coin.GetComponent<MeshRenderer>().sharedMaterial = matGold;
+                var mf = coin.AddComponent<MeshFilter>();
+                mf.sharedMesh = BuildFallbackDiscMesh();
+                var mr = coin.AddComponent<MeshRenderer>();
+                var col = coin.AddComponent<SphereCollider>();
+                col.isTrigger = true;
+                col.radius = 0.65f;
+
+                var matGold = coinMaterial;
+                if (matGold == null)
+                {
+                    var sh = Shader.Find("Toon/ToonLit") ?? Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                    matGold = new Material(sh) { color = Palette.AccentStarGold };
+                }
+                if (matGold != null) mr.sharedMaterial = matGold;
 
                 var collect = coin.AddComponent<StarCoinCollectible>();
                 collect.kind = CollectibleKind.YellowCoin;
@@ -383,5 +416,40 @@ public class WhompBossController : MonoBehaviour
         }
 
         gameObject.SetActive(false);
+    }
+
+    private static Mesh _fallbackDiscMesh;
+    private static Mesh BuildFallbackDiscMesh()
+    {
+        if (_fallbackDiscMesh != null) return _fallbackDiscMesh;
+        const int sides = 16;
+        var verts = new Vector3[sides * 2 + 2];
+        var tris = new int[sides * 12];
+        verts[0] = new Vector3(0f, 0.5f, 0f);
+        verts[1] = new Vector3(0f, -0.5f, 0f);
+        for (int i = 0; i < sides; i++)
+        {
+            float a = (i / (float)sides) * Mathf.PI * 2f;
+            float x = Mathf.Cos(a) * 0.5f;
+            float z = Mathf.Sin(a) * 0.5f;
+            verts[2 + i] = new Vector3(x, 0.5f, z);
+            verts[2 + sides + i] = new Vector3(x, -0.5f, z);
+        }
+        int ti = 0;
+        for (int i = 0; i < sides; i++)
+        {
+            int next = (i + 1) % sides;
+            int t0 = 2 + i, t1 = 2 + next;
+            int b0 = 2 + sides + i, b1 = 2 + sides + next;
+            tris[ti++] = 0; tris[ti++] = t1; tris[ti++] = t0;
+            tris[ti++] = 1; tris[ti++] = b0; tris[ti++] = b1;
+            tris[ti++] = t0; tris[ti++] = t1; tris[ti++] = b1;
+            tris[ti++] = t0; tris[ti++] = b1; tris[ti++] = b0;
+        }
+        _fallbackDiscMesh = new Mesh { name = "WhompCoinFallback" };
+        _fallbackDiscMesh.SetVertices(verts);
+        _fallbackDiscMesh.SetTriangles(tris, 0);
+        _fallbackDiscMesh.RecalculateNormals();
+        return _fallbackDiscMesh;
     }
 }

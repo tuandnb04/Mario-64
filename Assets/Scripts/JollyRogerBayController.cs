@@ -12,7 +12,8 @@ namespace Mario64Remake
         MetalCapGreenBlock,
         JetStreamGeyser,
         FallingCavernPillar,
-        FloatingGalleonShip
+        FloatingGalleonShip,
+        ShipCabinPortal
     }
 }
 
@@ -115,7 +116,10 @@ public class JollyRogerBayController : MonoBehaviour
             rewardStar.gameObject.SetActive(false);
         }
 
-        gameObject.SetActive(true);
+        if (elementType != Mario64Remake.JollyRogerElementType.FloatingGalleonShip)
+        {
+            gameObject.SetActive(true);
+        }
     }
 
     private void Update()
@@ -154,6 +158,9 @@ public class JollyRogerBayController : MonoBehaviour
                 break;
             case Mario64Remake.JollyRogerElementType.FloatingGalleonShip:
                 UpdateFloatingGalleon();
+                break;
+            case Mario64Remake.JollyRogerElementType.ShipCabinPortal:
+                UpdateShipCabinPortal();
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
@@ -199,17 +206,19 @@ public class JollyRogerBayController : MonoBehaviour
             if (GameAudio.Instance != null) GameAudio.Instance.PlayPickupBlip(expectedIndex * 0.12f);
             if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 0.85f, isStar: false);
 
-            if (expectedIndex >= totalChestsInGroup)
-            {
-                // All 4 chests opened in the right order! Reveal the Power Star!
-                _completed = true;
-                RevealGroupRewardStar();
-            }
+            if (expectedIndex < totalChestsInGroup) return;
+            // All 4 chests opened in the right order! Reveal the Power Star!
+            _completed = true;
+            RevealGroupRewardStar();
         }
         else
         {
-            // Wrong chest order! Shock Mario (costs 1 Power Wedge / 4s oxygen) & reset all chests in this puzzle group!
-            if (hero != null) hero.RefillOxygen(-4.5f);
+            // Wrong chest order! Shock Mario (costs 2 Power Wedges) & reset all chests in this puzzle group!
+            if (hero != null)
+            {
+                hero.TakeDamage(2, transform.position);
+                hero.RefillOxygen(-4.5f);
+            }
             if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
             if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position + Vector3.up * 0.6f);
             if (hero != null && hero.impulseSource != null) hero.impulseSource.GenerateImpulse(0.35f);
@@ -251,7 +260,6 @@ public class JollyRogerBayController : MonoBehaviour
     private void UpdateUnagiEel(float dt)
     {
         var hero = MarioRemakeController.Instance;
-        var isAct2 = GameManager.Instance == null || GameManager.Instance.currentActNumber == 2;
 
         if (!_eelSwimmingOut)
         {
@@ -261,10 +269,10 @@ public class JollyRogerBayController : MonoBehaviour
             transform.rotation = _originRot * Quaternion.Euler(0f, sway, 0f);
             AnimateEelSegments();
 
-            // When Mario swims near Unagi's niche (or in Act 2), Unagi emerges to swim around the bay!
-            if (hero == null || !(Vector3.Distance(hero.transform.position, transform.position) < 14f)) return;
+            // When Mario swims near Unagi's niche, Unagi emerges to swim around the bay!
+            if (hero == null || !(Vector3.Distance(hero.transform.position, transform.position) < 15.5f)) return;
             _eelSwimmingOut = true;
-            if (rewardStar != null && isAct2 && !rewardStar.IsCollected)
+            if (rewardStar != null && !rewardStar.IsCollected)
             {
                 rewardStar.gameObject.SetActive(true);
             }
@@ -273,9 +281,9 @@ public class JollyRogerBayController : MonoBehaviour
 
         // Swim in a grand figure-8 / elliptical circuit around the Deep Bay Trench!
         var angle = _clock * 0.55f;
-        const float radiusX = 13.5f;
-        const float radiusZ = 10.5f;
-        var center = _originPos + new Vector3(0f, 1.5f, 8.5f);
+        const float radiusX = 11.5f;
+        const float radiusZ = 9.5f;
+        var center = _originPos + new Vector3(-13.5f, 1.2f, 0f);
 
         var nextPos = center + new Vector3(Mathf.Sin(angle) * radiusX, Mathf.Sin(angle * 2f) * 1.6f, Mathf.Cos(angle) * radiusZ);
         var moveDir = nextPos - transform.position;
@@ -288,7 +296,7 @@ public class JollyRogerBayController : MonoBehaviour
         AnimateEelSegments();
 
         // Keep Star 2 attached to the tip of Unagi's tail until collected!
-        if (rewardStar == null || rewardStar.IsCollected || !isAct2) return;
+        if (rewardStar == null || rewardStar.IsCollected) return;
         if (!rewardStar.gameObject.activeSelf) rewardStar.gameObject.SetActive(true);
         var tailTransform = eelBodySegments is { Length: > 0 }
             ? eelBodySegments[^1]
@@ -365,8 +373,7 @@ public class JollyRogerBayController : MonoBehaviour
             visualSubTarget.localScale = new Vector3(pulse, 1f, pulse);
         }
 
-        var isAct6 = GameManager.Instance == null || GameManager.Instance.currentActNumber == 6;
-        if (rewardStar != null && isAct6 && !rewardStar.IsCollected && !rewardStar.gameObject.activeSelf)
+        if (rewardStar != null && !rewardStar.IsCollected && !rewardStar.gameObject.activeSelf)
         {
             rewardStar.gameObject.SetActive(true);
         }
@@ -464,5 +471,20 @@ public class JollyRogerBayController : MonoBehaviour
         var roll = Mathf.Cos(_clock * 1.5f) * 3.1f;
         transform.position = _originPos + new Vector3(0f, bobY, 0f);
         transform.rotation = _originRot * Quaternion.Euler(pitch, 0f, roll);
+    }
+
+    private void UpdateShipCabinPortal()
+    {
+        if (_cooldownTimer > 0f) return;
+        var hero = MarioRemakeController.Instance;
+        if (hero == null || moveOffset.sqrMagnitude < 0.01f) return;
+        if (Vector3.Distance(hero.transform.position, transform.position) > 3.2f) return;
+
+        var cc = hero.GetComponent<CharacterController>();
+        if (cc != null) cc.enabled = false;
+        hero.transform.position = moveOffset;
+        if (cc != null) cc.enabled = true;
+        _cooldownTimer = 2.0f;
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayPickupBlip(0.3f);
     }
 }

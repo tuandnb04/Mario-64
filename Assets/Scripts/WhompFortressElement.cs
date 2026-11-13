@@ -14,7 +14,9 @@ namespace Mario64Remake
         FloatingIsle,
         SkyCannonLauncher,
         BreakawayBrickWall,
-        SleepingPiranha
+        SleepingPiranha,
+        ElevatorLift,
+        HootOwlCarry
     }
 }
 
@@ -38,9 +40,12 @@ public class WhompFortressElement : MonoBehaviour
     public float phaseOffset;
     public float rotationSpeed = 42f;
     public float tiltMaxAngle = 16f;
+    public Vector3 tiltAxis = Vector3.forward;
     public Vector3 primaryLaunchTarget = new(-13.5f, 16.5f, 5.5f);
     public Vector3 secondaryLaunchTarget = new(14.5f, 10.2f, -1.5f);
     public StarCoinCollectible revealedStar;
+    public StarCoinCollectible primaryTargetStar;
+    public StarCoinCollectible secondaryTargetStar;
 
     private Vector3 _startPos;
     private Quaternion _startRot;
@@ -51,14 +56,56 @@ public class WhompFortressElement : MonoBehaviour
     private bool _cannonLaunching;
     private bool _useSecondaryTarget;
     private float _cannonCooldown;
+    private float _hootCooldown;
     private float _thwompTimer;
     private int _thwompState; // 0 = top wait, 1 = slamming down, 2 = bottom wait, 3 = rising up
+
+    // Piranha Plant Animated State & Hierarchy Pivots
+    private int _piranhaState; // 0 = Sleeping, 1 = WakingUp, 2 = Chomping/Lunging, 3 = ReturningToSleep
+    private float _piranhaTimer;
+    private float _piranhaBiteCooldown;
+    private float _piranhaFarTimer;
+    private bool _piranhaPivotsResolved;
+    private Transform _piranhaStem;
+    private Transform _piranhaHead;
+    private Transform _piranhaJawUpper;
+    private Transform _piranhaJawLower;
+    private Transform _piranhaLeafL;
+    private Transform _piranhaLeafR;
 
     private void Awake()
     {
         _startPos = transform.position;
         _startRot = transform.rotation;
         _startScale = transform.localScale;
+        ResolvePiranhaPivots();
+    }
+
+    private void ResolvePiranhaPivots()
+    {
+        if (_piranhaPivotsResolved) return;
+        _piranhaPivotsResolved = true;
+        if (hazardType != Mario64Remake.FortressHazardType.SleepingPiranha) return;
+        FindChildDeep(transform, "VisualModel");
+        _piranhaStem = FindChildDeep(transform, "StemPivot");
+        _piranhaHead = FindChildDeep(transform, "HeadPivot");
+        _piranhaJawUpper = FindChildDeep(transform, "JawUpperPivot");
+        _piranhaJawLower = FindChildDeep(transform, "JawLowerPivot");
+        _piranhaLeafL = FindChildDeep(transform, "LeafPivot_L");
+        _piranhaLeafR = FindChildDeep(transform, "LeafPivot_R");
+    }
+
+    private static Transform FindChildDeep(Transform root, string targetName)
+    {
+        if (root == null) return null;
+        for (var i = 0; i < root.childCount; i++)
+        {
+            var c = root.GetChild(i);
+            if (c.name == targetName) return c;
+            var hit = FindChildDeep(c, targetName);
+            if (hit != null) return hit;
+        }
+        return null;
     }
 
     public void ResetElement()
@@ -75,8 +122,14 @@ public class WhompFortressElement : MonoBehaviour
         _boardFalling = false;
         _cannonLaunching = false;
         _cannonCooldown = 0f;
+        _hootCooldown = 0f;
         _thwompTimer = 0f;
         _thwompState = 0;
+        _piranhaState = 0;
+        _piranhaTimer = 0f;
+        _piranhaBiteCooldown = 0f;
+        _piranhaFarTimer = 0f;
+        ApplyPiranhaPose(0f, 0f, 0f, 0f);
         gameObject.SetActive(true);
     }
 
@@ -116,7 +169,8 @@ public class WhompFortressElement : MonoBehaviour
             case Mario64Remake.FortressHazardType.TiltingPlank:
             {
                 var angle = Mathf.Sin((_clock + phaseOffset) * Mathf.PI) * tiltMaxAngle;
-                transform.rotation = _startRot * Quaternion.Euler(0f, 0f, angle);
+                var axis = tiltAxis.sqrMagnitude > 0.01f ? tiltAxis.normalized : Vector3.forward;
+                transform.rotation = _startRot * Quaternion.AngleAxis(angle, axis);
                 break;
             }
             case Mario64Remake.FortressHazardType.KickableBoard:
@@ -142,7 +196,20 @@ public class WhompFortressElement : MonoBehaviour
             }
             case Mario64Remake.FortressHazardType.SleepingPiranha:
             {
-                UpdateSleepingPiranha();
+                UpdateSleepingPiranha(dt);
+                break;
+            }
+            case Mario64Remake.FortressHazardType.ElevatorLift:
+            {
+                // Smooth dwell at bottom & top so Mario steps on and off comfortably
+                var ping = Mathf.PingPong(_clock + phaseOffset, 1.4f);
+                var t = Mathf.Clamp01((ping - 0.2f) / 1.0f);
+                transform.position = _startPos + moveOffset * Mathf.SmoothStep(0f, 1f, t);
+                break;
+            }
+            case Mario64Remake.FortressHazardType.HootOwlCarry:
+            {
+                UpdateHootOwl(dt);
                 break;
             }
             default:
@@ -162,7 +229,20 @@ public class WhompFortressElement : MonoBehaviour
         if (dist < 1.85f)
         {
             Vector3 dest;
-            if (GameManager.Instance != null && GameManager.Instance.currentActNumber == 6)
+            bool primaryPending = primaryTargetStar != null && !primaryTargetStar.IsCollected;
+            bool secondaryPending = secondaryTargetStar != null && !secondaryTargetStar.IsCollected;
+
+            if (primaryTargetStar != null || secondaryTargetStar != null)
+            {
+                if (primaryPending && !secondaryPending) dest = primaryLaunchTarget;
+                else if (secondaryPending && !primaryPending) dest = secondaryLaunchTarget;
+                else
+                {
+                    dest = _useSecondaryTarget ? secondaryLaunchTarget : primaryLaunchTarget;
+                    _useSecondaryTarget = !_useSecondaryTarget;
+                }
+            }
+            else if (GameManager.Instance != null && GameManager.Instance.currentActNumber == 6)
             {
                 dest = secondaryLaunchTarget;
             }
@@ -185,15 +265,16 @@ public class WhompFortressElement : MonoBehaviour
         var cc = hero.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;
 
-        if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayCannonBlastSound();
         if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 0.8f, isStar: true);
 
-        var p0 = transform.position + Vector3.up * 1.1f;
-        yield return Ease.Tween(0.85f, t =>
+        var p0 = transform.position + Vector3.up * 1.25f;
+        var arcPeak = Mathf.Max(9.5f, Vector3.Distance(p0, destination) * 0.36f);
+        yield return Ease.Tween(1.05f, t =>
         {
             if (hero == null) return;
             var pos = Vector3.Lerp(p0, destination, t);
-            pos.y += Mathf.Sin(t * Mathf.PI) * 9.5f;
+            pos.y += Mathf.Sin(t * Mathf.PI) * arcPeak;
             hero.transform.position = pos;
             hero.transform.Rotate(540f * Time.unscaledDeltaTime, 0f, 0f, Space.Self);
         }, Ease.OutCubic, unscaled: false);
@@ -217,34 +298,277 @@ public class WhompFortressElement : MonoBehaviour
         var dist = Vector3.Distance(hero.transform.position, transform.position);
         if (dist < 2.8f)
         {
-            if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
-            if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position, isStar: true);
-            if (GameManager.Instance != null) GameManager.Instance.TriggerHitStop(0.06f);
-            if (revealedStar != null && (GameManager.Instance == null || GameManager.Instance.currentActNumber == 6))
-                revealedStar.gameObject.SetActive(true);
-            gameObject.SetActive(false);
+            ShatterBreakawayWall();
         }
     }
 
-    private void UpdateSleepingPiranha()
+    public void ShatterBreakawayWall()
     {
+        if (!gameObject.activeSelf) return;
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position, isStar: true);
+        if (GameManager.Instance != null) GameManager.Instance.TriggerHitStop(0.06f);
+        if (revealedStar != null && !revealedStar.IsCollected)
+            revealedStar.gameObject.SetActive(true);
+        gameObject.SetActive(false);
+    }
+
+    private void UpdateSleepingPiranha(float dt)
+    {
+        if (!_piranhaPivotsResolved) ResolvePiranhaPivots();
         if (_startScale.sqrMagnitude < 0.0001f) _startScale = Vector3.one;
-        var breathe = 1f + Mathf.Sin(_clock * 2.2f) * 0.06f;
-        transform.localScale = new Vector3(_startScale.x * breathe, _startScale.y / breathe, _startScale.z * breathe);
+        if (_piranhaBiteCooldown > 0f) _piranhaBiteCooldown -= dt;
+
+        var hero = MarioRemakeController.Instance;
+        var flatDist = hero != null
+            ? Vector2.Distance(new Vector2(hero.transform.position.x, hero.transform.position.z), new Vector2(transform.position.x, transform.position.z))
+            : 999f;
+        var yDiff = hero != null ? hero.transform.position.y - transform.position.y : 99f;
+
+        // Check if Mario attacks / Ground Pounds / Stomps the Piranha Plant!
+        if (hero != null && flatDist < 2.45f && Mathf.Abs(yDiff) < 3.0f)
+        {
+            var stompHit = hero.IsStompingDown && yDiff > 0.75f && flatDist < 1.9f;
+            if (hero.IsAttackingOrSliding || stompHit)
+            {
+                if (stompHit) hero.BounceUpFromStomp(1.85f);
+                DefeatSleepingPiranha();
+                return;
+            }
+        }
+
+        _piranhaTimer += dt;
+
+        switch (_piranhaState)
+        {
+            case 0: // Sleeping & Snoring crouched low over soil tuft
+            {
+                var snore = Mathf.Sin(_clock * 2.2f);
+                var breathe = 1f + snore * 0.06f;
+                transform.localScale = new Vector3(_startScale.x * breathe, _startScale.y / breathe, _startScale.z * breathe);
+                ApplyPiranhaPose(erect01: 0f, jawOpen01: 0.05f, lungePitchDeg: 0f, leafFlapDeg: snore * 4f);
+
+                // Wake up when Mario approaches aggressively (or steps right beside it)!
+                if (hero != null && Mathf.Abs(yDiff) < 3.2f)
+                {
+                    var runningLoud = !hero.IsCrouching && hero.CurrentPlanarSpeed > 3.2f;
+                    if (flatDist < 2.8f || (flatDist < 5.6f && runningLoud))
+                    {
+                        _piranhaState = 1;
+                        _piranhaTimer = 0f;
+                        _piranhaFarTimer = 0f;
+                        transform.localScale = _startScale;
+                        if (GameAudio.Instance != null) GameAudio.Instance.PlayPiranhaChompSound();
+                    }
+                }
+                break;
+            }
+            case 1: // Waking up & unfurling erect toward Mario!
+            {
+                var u = Mathf.Clamp01(_piranhaTimer / 0.34f);
+                var eased = Ease.OutBack(u);
+                FaceHeroSmoothly(hero, dt * 10f);
+                ApplyPiranhaPose(erect01: eased, jawOpen01: Mathf.Sin(u * Mathf.PI) * 0.85f, lungePitchDeg: -10f * u, leafFlapDeg: Mathf.Sin(u * 22f) * 14f);
+                if (u >= 1f)
+                {
+                    _piranhaState = 2;
+                    _piranhaTimer = 0f;
+                }
+                break;
+            }
+            case 2: // Awake, snapping, lunging & biting Mario!
+            {
+                transform.localScale = _startScale;
+                FaceHeroSmoothly(hero, dt * 6.5f);
+
+                // Rhythmic jaw open -> fast snap lunge bite cycle (~1.15s per snap)
+                var snapPhase = Mathf.Repeat(_piranhaTimer * 1.2f, 1f);
+                float jawOpen;
+                float lungeDeg;
+                if (snapPhase < 0.45f)
+                {
+                    var w = snapPhase / 0.45f;
+                    jawOpen = Mathf.Lerp(0.15f, 1.0f, w);
+                    lungeDeg = Mathf.Lerp(0f, -14f, w); // rear head back opening wide
+                }
+                else if (snapPhase < 0.68f)
+                {
+                    var s = (snapPhase - 0.45f) / 0.23f;
+                    jawOpen = Mathf.Lerp(1.0f, 0.0f, s * s);
+                    lungeDeg = Mathf.Lerp(-14f, 32f, s * s); // lunge jaws forward & snap!
+                    if (s is > 0.72f and < 0.92f && flatDist < 4.5f && _piranhaBiteCooldown <= 0f)
+                    {
+                        if (GameAudio.Instance != null) GameAudio.Instance.PlayPiranhaChompSound();
+                    }
+                }
+                else
+                {
+                    var r = (snapPhase - 0.68f) / 0.32f;
+                    jawOpen = Mathf.Lerp(0f, 0.25f, r);
+                    lungeDeg = Mathf.Lerp(32f, 0f, Ease.OutCubic(r));
+                }
+
+                ApplyPiranhaPose(erect01: 1f, jawOpen01: jawOpen, lungePitchDeg: lungeDeg, leafFlapDeg: Mathf.Sin(_piranhaTimer * 12f) * 10f);
+
+                // Bite hitbox check during active lunge / close contact!
+                if (hero != null && _piranhaBiteCooldown <= 0f && flatDist < 2.25f && Mathf.Abs(yDiff) < 2.4f && snapPhase is >= 0.48f and <= 0.76f)
+                {
+                    _piranhaBiteCooldown = 1.15f;
+                    hero.TakeDamage(2, transform.position);
+                    if (GameAudio.Instance != null) GameAudio.Instance.PlayPiranhaChompSound();
+                }
+
+                if (hero == null || flatDist > 8.6f || Mathf.Abs(yDiff) > 4.2f)
+                {
+                    _piranhaFarTimer += dt;
+                    if (_piranhaFarTimer > 1.35f)
+                    {
+                        _piranhaState = 3;
+                        _piranhaTimer = 0f;
+                    }
+                }
+                else
+                {
+                    _piranhaFarTimer = 0f;
+                }
+                break;
+            }
+            case 3: // Returning back to curled sleep pose
+            {
+                var u = Mathf.Clamp01(_piranhaTimer / 0.55f);
+                ApplyPiranhaPose(erect01: 1f - Ease.OutCubic(u), jawOpen01: 0.05f, lungePitchDeg: 0f, leafFlapDeg: 0f);
+                if (u >= 1f)
+                {
+                    _piranhaState = 0;
+                    _piranhaTimer = 0f;
+                }
+                break;
+            }
+        }
+    }
+
+    private void FaceHeroSmoothly(MarioRemakeController hero, float speed)
+    {
+        if (hero == null) return;
+        var dir = hero.transform.position - transform.position;
+        dir.y = 0f;
+        if (!(dir.sqrMagnitude > 0.01f)) return;
+        var look = Quaternion.LookRotation(dir.normalized, Vector3.up);
+        transform.rotation = Quaternion.Slerp(transform.rotation, look, Mathf.Clamp01(speed));
+    }
+
+    private void ApplyPiranhaPose(float erect01, float jawOpen01, float lungePitchDeg, float leafFlapDeg)
+    {
+        if (_piranhaStem != null)
+        {
+            var stemY = Mathf.Lerp(0.46f, 1.05f, erect01);
+            var stemW = Mathf.Lerp(1.12f, 1.0f, erect01);
+            _piranhaStem.localScale = new Vector3(stemW, stemY, stemW);
+            var sleepCurlX = Mathf.Lerp(34f, 0f, erect01);
+            _piranhaStem.localRotation = Quaternion.Euler(sleepCurlX + lungePitchDeg * 0.45f, 0f, 0f);
+        }
+        if (_piranhaHead != null)
+        {
+            var headPitch = Mathf.Lerp(26f, -6f, erect01) + lungePitchDeg * 0.55f;
+            _piranhaHead.localRotation = Quaternion.Euler(headPitch, 0f, 0f);
+        }
+        if (_piranhaJawUpper != null)
+        {
+            _piranhaJawUpper.localRotation = Quaternion.Euler(-38f * jawOpen01, 0f, 0f);
+        }
+        if (_piranhaJawLower != null)
+        {
+            _piranhaJawLower.localRotation = Quaternion.Euler(32f * jawOpen01, 0f, 0f);
+        }
+        if (_piranhaLeafL != null)
+        {
+            _piranhaLeafL.localRotation = Quaternion.Euler(0f, 0f, 14f + leafFlapDeg);
+        }
+        if (_piranhaLeafR != null)
+        {
+            _piranhaLeafR.localRotation = Quaternion.Euler(0f, 0f, -14f - leafFlapDeg);
+        }
+    }
+
+    public void DefeatSleepingPiranha()
+    {
+        if (!gameObject.activeSelf) return;
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayEnemyDefeatSound();
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 0.9f, isStar: false);
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.coinsCollected += 5; // Blue Coin equivalent (5 Coins!)
+            GameManager.Instance.TriggerHitStop(0.05f);
+        }
+        if (MarioRemakeController.Instance != null) MarioRemakeController.Instance.HealHealth(2);
+        gameObject.SetActive(false);
+    }
+
+    private void UpdateHootOwl(float dt)
+    {
+        if (_hootCooldown > 0f) _hootCooldown -= dt;
+        if (_cannonLaunching) return;
+
+        var bobY = Mathf.Sin(_clock * 2.4f) * 0.14f;
+        transform.position = _startPos + new Vector3(0f, bobY, 0f);
+
+        if (_hootCooldown > 0f) return;
 
         var hero = MarioRemakeController.Instance;
         if (hero == null) return;
-        var dist = Vector3.Distance(hero.transform.position, transform.position);
-        if (dist < 1.9f && hero.transform.position.y > transform.position.y + 0.5f)
+
+        var flatDist = Vector2.Distance(
+            new Vector2(hero.transform.position.x, hero.transform.position.z),
+            new Vector2(_startPos.x, _startPos.z));
+        if (flatDist < 2.2f && hero.transform.position.y >= _startPos.y - 2.4f && hero.transform.position.y <= _startPos.y + 2.5f)
         {
-            if (GameAudio.Instance != null) GameAudio.Instance.PlayPickupBlip(0.25f);
-            if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 0.6f, isStar: false);
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.coinsCollected += 5; // Blue Coin equivalent (5 Coins!)
-            }
-            gameObject.SetActive(false);
+            StartCoroutine(HootOwlFlightRoutine(hero));
         }
+    }
+
+    private IEnumerator HootOwlFlightRoutine(MarioRemakeController hero)
+    {
+        _cannonLaunching = true;
+        var cc = hero.GetComponent<CharacterController>();
+        if (cc != null) cc.enabled = false;
+
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(_startPos);
+
+        var p0 = _startPos + Vector3.up * 1.2f;
+        var mid = primaryLaunchTarget;
+        var dropOverCage = secondaryLaunchTarget;
+
+        // Glide across fortress toward Sky Islands, then hold right above Caged Island's top opening
+        yield return Ease.Tween(1.1f, t =>
+        {
+            if (hero == null) return;
+            var pos = Vector3.Lerp(p0, mid, Mathf.SmoothStep(0f, 1f, t));
+            pos.y += Mathf.Sin(t * Mathf.PI) * 3.5f;
+            transform.position = pos + Vector3.up * 1.15f;
+            transform.LookAt(new Vector3(dropOverCage.x, transform.position.y, dropOverCage.z));
+            hero.transform.position = pos;
+        }, Ease.OutCubic, unscaled: false);
+
+        yield return Ease.Tween(1.15f, t =>
+        {
+            if (hero == null) return;
+            var pos = Vector3.Lerp(mid, dropOverCage, Mathf.SmoothStep(0f, 1f, t));
+            pos.y += Mathf.Sin(t * Mathf.PI) * 1.4f;
+            transform.position = pos + Vector3.up * 1.15f;
+            hero.transform.position = pos;
+        }, Ease.OutCubic, unscaled: false);
+
+        if (hero != null)
+        {
+            hero.transform.position = dropOverCage;
+            if (cc != null) cc.enabled = true;
+        }
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(dropOverCage);
+
+        transform.SetPositionAndRotation(_startPos, _startRot);
+        _hootCooldown = 2.8f;
+        _cannonLaunching = false;
     }
 
     private void UpdateThwomp(float dt)
@@ -255,11 +579,19 @@ public class WhompFortressElement : MonoBehaviour
 
         switch (_thwompState)
         {
-            case 0: // Top wait with slight angry tremble
+            case 0: // Top wait — react swiftly when Mario enters underneath or after max cycle timeout!
             {
-                var shake = (_thwompTimer > 1.0f) ? Mathf.Sin(_thwompTimer * 55f) * 0.06f : 0f;
+                var hero = MarioRemakeController.Instance;
+                var heroBeneath = hero != null &&
+                    Vector2.Distance(new Vector2(hero.transform.position.x, hero.transform.position.z), new Vector2(_startPos.x, _startPos.z)) < 4.5f &&
+                    hero.transform.position.y <= _startPos.y + 3.5f &&
+                    hero.transform.position.y >= _startPos.y - 3.5f;
+
+                var preTrigger = heroBeneath && _thwompTimer >= 0.18f;
+                var maxCycle = _thwompTimer >= 4.2f + phaseOffset;
+                var shake = (preTrigger || _thwompTimer > 3.6f) ? Mathf.Sin(_thwompTimer * 58f) * 0.08f : 0f;
                 transform.position = topPos + new Vector3(shake, 0f, 0f);
-                if (_thwompTimer >= 1.45f + phaseOffset)
+                if ((heroBeneath && _thwompTimer >= 0.38f) || maxCycle)
                 {
                     _thwompTimer = 0f;
                     _thwompState = 1;
@@ -285,10 +617,10 @@ public class WhompFortressElement : MonoBehaviour
                         var pDist = Vector2.Distance(
                             new Vector2(hero.transform.position.x, hero.transform.position.z),
                             new Vector2(bottomPos.x, bottomPos.z));
-                        if (pDist < 1.45f && hero.transform.position.y < bottomPos.y + 1.15f)
+                        if (pDist < 1.95f && hero.transform.position.y < bottomPos.y + 1.35f)
                         {
                             if (hero.motion != null) hero.motion.TriggerLandSquash(heavy: true);
-                            hero.ResetToSpawn();
+                            hero.TakeDamage(3, bottomPos);
                         }
                     }
                 }
@@ -324,8 +656,10 @@ public class WhompFortressElement : MonoBehaviour
         var hero = MarioRemakeController.Instance;
         if (hero == null) return;
 
-        var dist = Vector3.Distance(hero.transform.position, transform.position);
-        if (dist < 2.25f)
+        var flatDist = Vector2.Distance(
+            new Vector2(hero.transform.position.x, hero.transform.position.z),
+            new Vector2(transform.position.x, transform.position.z));
+        if (flatDist < 2.25f && Mathf.Abs(hero.transform.position.y - transform.position.y) < 3.5f)
         {
             StartCoroutine(FallBridgeRoutine());
         }

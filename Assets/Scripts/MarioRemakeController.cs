@@ -1,86 +1,97 @@
+using System;
+using Mario64Remake;
 using Unity.Cinemachine;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// Full Super Mario 64 Remake Acrobatics & Lakitu 360° Camera Controller:
-/// ---------------------------------------------------------------------
-/// 1. COMPLETE SM64 ACROBATICS ARSENAL:
-///    - Single Jump -> Double Jump -> Triple Front-Flip Somersault! (3-stage combo within landing window)
-///    - Backflip! (Crouch while stationary/slow + Jump -> high vertical reverse somersault!)
-///    - Side Somersault! (Snap stick 180° opposite to running velocity + Jump -> high twisting aerial flip!)
-///    - Long Jump! (Hold Crouch/Z while running + Jump -> low-arc fast horizontal leap across huge chasms!)
-///    - 3-Hit Punch-Punch-Kick Combo! (Left Click / J / F on ground: Left Punch -> Right Punch -> Leaping Kick!)
-///    - Air Jump Kick! (Attack in mid-air while moving slowly -> forward karate kick with upward hover pop!)
-///    - Air Dive & Belly Slide! (E / Right Click or Attack while running fast -> forward dive onto stomach -> slides along ground -> press Jump/Attack to Dive-Rollout flip!)
-///    - Ground Pound! (C / Ctrl / Shift in mid-air -> mid-air flip stall -> heavy downward slam + shockwave + camera impulse + Pound-Jump if Jump pressed on impact!)
-///    - Wall Slide & Wall Kick! (Slide down walls with friction & dust puffs -> press Jump to kick off at 45°!)
-///    - Moving Platform Inheritance! (Automatically rides Shove-Blocks, Rotating Bridges, Seesaws & Floating Isles without slipping!)
-///
-/// 2. TRUE 360° LAKITU ORBIT CAMERA + C-BUTTONS:
-///    - Free Mouse Look (when Playing, cursor locks for smooth 360° Yaw & Pitch orbit; Esc unlocks for Pause)
-///    - Q / E or Left / Right Arrow or Gamepad Right Stick for classic Lakitu C-Left / C-Right orbit
-///    - R / Tab or Middle Mouse Click to snap camera behind Mario's back
-///    - Scroll Wheel or Z/X zoom distance (Close / Medium / Wide Lakitu View)
-///    - Intelligent gentle auto-follow yaw when running sideways without fighting manual mouse input!
+/// Super Mario Odyssey-Grade Feel & Camera Controller (Strictly SM64 Moveset — Zero Cappy/Capture):
+/// -----------------------------------------------------------------------------------------------
+/// 1. ZERO-LAG ODYSSEY 360° FREE-ORBIT CAMERA (runs in LateUpdate after CharacterController.Move):
+///    - Right-Click drag works immediately even without locking cursor; clicking Game View or pressing Tab/F9 toggles cursor mouselook!
+///    - Wide vertical pitch [-28°..+74°], smooth height cushioning, dynamic FOV widen during flips/dives/long jumps,
+///      scroll zoom [4.0m..11.5m], Q/E & Arrow Keys C-button orbit, R / Middle-Click snappy align behind Mario!
+///    - Intelligent gentle auto-follow yields immediately whenever player manually orbits Camera!
+/// 2. SNAPPY SM64 MOVESET WITH ODYSSEY RESPONSIVENESS:
+///    - Variable Jump Height (tap vs hold Space) + Apex Float Gravity Reduction + Crisp Fast Fall + Coyote (0.16s) + Buffer (0.16s)
+///    - Single -> Double -> Triple Front-Flip Somersault!
+///    - Skid-to-Side Somersault (reverse stick >130° while sprinting -> pivot skid sparks -> Jump!)
+///    - Crouch (C/Ctrl) & Crawl, Backflip (stationary Crouch + Jump), Long Jump (running Crouch + Jump!)
+///    - 3-Hit Punch -> Punch -> Roundhouse Kick (Left Click / F / J) & Air Jump Kick!
+///    - Sweep Kick (stationary Crouch + Attack) & Slide Kick (running Crouch + Attack)!
+///    - Dedicated Air Dive (E / Right Click / X) -> Belly Slide -> Jump Rollout Hop!
+///    - Ground Pound (Ctrl/C/Shift in mid-air) -> Stall -> Slam + Shockwave -> Pound Boost Jump,
+///      AND classic pro trick: Ground-Pound -> Dive Cancel (press Dive during GP stall)!
+///    - Forgiving Wall Slide & Crisp 45° Wall Kick (with brief outward steer grace)
+///    - Ledge Grab & Vault Climb onto platform edges automatically while falling!
+///    - Steep Slope Sliding + Universal Moving Platform Riding + 3D Swimming
+///    - Bowser Boss Tail Grab -> 360° Spin -> Hurl toward Spiked Bombs!
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class MarioRemakeController : MonoBehaviour
 {
-    private static MarioRemakeController _instance;
+    private static MarioRemakeController instance;
     public static MarioRemakeController Instance
     {
         get
         {
-            if (_instance == null) _instance = FindAnyObjectByType<MarioRemakeController>();
-            return _instance;
+            if (instance == null) instance = FindAnyObjectByType<MarioRemakeController>();
+            return instance;
         }
-        private set => _instance = value;
+        private set => instance = value;
     }
 
-    [Header("Movement Tunables")]
+    [Header("Movement Tunables (Odyssey-Snappy SM64)")]
     public float maxRunSpeed = 9.2f;
-    public float crawlSpeed = 3.2f;
-    public float acceleration = 32f;
-    public float deceleration = 26f;
-    public float airControl = 16f;
-    public float turnSmoothSpeed = 16f;
-    public float gravity = -26f;
+    public float crawlSpeed = 3.4f;
+    public float acceleration = 46f;
+    public float deceleration = 40f;
+    public float airControl = 20f;
+    public float turnSmoothSpeed = 20f;
+    public float gravity = -27.5f;
 
     [Header("SM64 Jump & Acrobatics Heights")]
-    public float singleJumpHeight = 2.7f;
-    public float doubleJumpHeight = 3.7f;
-    public float tripleJumpHeight = 5.4f;
-    public float backflipHeight = 4.9f;
-    public float sideFlipHeight = 4.5f;
-    public float longJumpHeight = 2.2f;
-    public float longJumpSpeedMultiplier = 1.58f;
-    public float comboWindowSeconds = 0.36f;
-    public float coyoteTimeSeconds = 0.15f;
-    public float jumpBufferSeconds = 0.15f;
+    public float singleJumpHeight = 2.35f;
+    public float doubleJumpHeight = 3.35f;
+    public float tripleJumpHeight = 4.95f;
+    public float backflipHeight = 4.35f;
+    public float sideFlipHeight = 4.10f;
+    public float longJumpHeight = 1.98f;
+    public float longJumpSpeedMultiplier = 1.48f;
+    public float comboWindowSeconds = 0.40f;
+    public float coyoteTimeSeconds = 0.16f;
+    public float jumpBufferSeconds = 0.16f;
 
-    [Header("Lakitu 360° Camera Tunables")]
-    public float mouseSensitivity = 0.18f;
-    public float keyboardOrbitSpeed = 125f;
-    public float autoFollowYawStrength = 1.65f;
-    public float minCameraPitch = -12f;
-    public float maxCameraPitch = 58f;
-    public float cameraDistance = 6.4f;
+    [Header("Odyssey 360° Camera Tunables")]
+    public float mouseSensitivity = 0.22f;
+    public float keyboardOrbitSpeed = 148f;
+    public float autoFollowYawStrength = 0f;
+    public float minCameraPitch = -42f;
+    public float maxCameraPitch = 82f;
+    public float cameraDistance = 6.6f;
+    public bool autoLockCursorOnPlay = true;
 
-    [Header("SM64 3D Swimming & Oxygen / Power Meter")]
+    [Header("SM64 8-Wedge Power Meter & Swimming")]
+    public int maxHealth = 8;
+    public int currentHealth = 8;
+    public int lives = 4;
+    public float hurtInvulnDuration = 1.45f;
     public bool hasWaterInCourse;
+    public float abyssDeathY = -18.5f;
     public float waterSurfaceY = -0.25f;
     public Vector2 waterBoundsX = new(-36f, 36f);
     public Vector2 waterBoundsZ = new(-14f, 30f);
-    public float maxOxygenSeconds = 32f; // 8 SM64 Power Wedges (4s per wedge)
+    public float maxOxygenSeconds = 32f;
     public float currentOxygenSeconds = 32f;
-    public float swimStrokeSpeed = 7.8f;
-    public float swimFlutterSpeed = 9.2f;
+    public float swimStrokeSpeed = 8.2f;
+    public float swimFlutterSpeed = 9.6f;
     public bool IsSwimming { get; private set; }
+    public int HealthWedges => Mathf.Clamp(currentHealth, 0, maxHealth);
+    public float HealthNormalized => Mathf.Clamp01((float)currentHealth / Mathf.Max(1, maxHealth));
     public int OxygenWedges => Mathf.Clamp(Mathf.CeilToInt((currentOxygenSeconds / Mathf.Max(1f, maxOxygenSeconds)) * 8f), 0, 8);
     public float OxygenNormalized => Mathf.Clamp01(currentOxygenSeconds / Mathf.Max(1f, maxOxygenSeconds));
-    private float _swimPitch;
 
     [FormerlySerializedAs("CameraYawProxy")] [Header("References")]
     public Transform cameraYawProxy;
@@ -93,6 +104,11 @@ public class MarioRemakeController : MonoBehaviour
     [FormerlySerializedAs("DebugJumpTrigger")] public bool debugJumpTrigger;
     [FormerlySerializedAs("DebugDiveTrigger")] public bool debugDiveTrigger;
     [FormerlySerializedAs("DebugGroundPoundTrigger")] public bool debugGroundPoundTrigger;
+    public bool debugGrabOrAttackTrigger;
+    public Vector2 debugOrbitDelta;
+    public bool debugRollTrigger;
+    public bool debugSpinAttackTrigger;
+    public bool debugToggleFirstPerson;
 
     private CharacterController _cc;
     private Vector3 _planarVelocity;
@@ -101,40 +117,80 @@ public class MarioRemakeController : MonoBehaviour
     private float _lastGroundedTime;
     private float _lastJumpPressedTime = -10f;
     private float _landedTimer = 10f;
+    private bool _jumpCutApplied;
 
     // SM64 Acrobatics State Flags
     private bool _isCrouching;
     private bool _isDiving;
     private bool _isBellySliding;
+    private bool _isSlideKicking;
     private bool _isGroundPounding;
     private bool _isBackflipping;
     private bool _isSideFlipping;
     private bool _isLongJumping;
     private bool _isWallSliding;
+    private bool _isLedgeHanging;
+    private bool _isRolling;
+    private float _rollTimer;
+    private bool _isSpinAttacking;
+    private float _spinTimer;
+    private float _spinCooldownTimer;
+    private bool _usedAirSpinHover;
+    private bool _isSlopeSliding;
+    private float _slopeSteepAngle;
+    private ClimbablePole _activePole;
+    private float _poleHeight;
+    private float _poleAngleDeg;
+    private bool _isPoleHandstand;
+    private float _poleCooldownTimer;
+    private CarriableObject _carriedObject;
+    private bool _isFirstPersonLook;
+    private TestPlaygroundManager _playgroundMgr;
     private float _groundPoundStallTimer;
     private float _groundPoundImpactTimer;
+    private float _wallKickSteerLockTimer;
+    private Vector3 _wallKickSteerDir;
+    private float _ledgeCooldownTimer;
+    private Vector3 _ledgeTopPos;
+    private Vector3 _ledgeForward;
 
     // Reversal / Side-Somersault Detection
     private Vector3 _lastRunDirection = Vector3.forward;
     private float _skidReversalTimer;
+    private float _prevFacingYaw;
 
-    // 3-Hit Punch-Punch-Kick & Air Kick State
-    private int _attackComboStage; // 0 = none, 1 = Punch L, 2 = Punch R, 3 = Kick, 4 = Air Kick
+    // Combat: 3-Hit Punch-Punch-Kick, Air Kick, Sweep Kick
+    private int _attackComboStage; // 0 = none, 1 = Punch L, 2 = Punch R, 3 = Kick, 4 = Air Kick, 5 = Sweep Kick
     private float _attackTimer;
-    private float _attackDuration = 0.26f;
+    private float _attackDuration = 0.25f;
     private float _attackChainWindowTimer;
     private bool _attackHitRegistered;
+
+    // Bowser Tail Grab & Spin State
+    private BowserBossController _spinningBowser;
+    private float _prevMouseXForSpin;
 
     // Moving Platform Tracking
     private Transform _activePlatform;
     private Vector3 _lastPlatformWorldPos;
     private Quaternion _lastPlatformWorldRot;
 
-    // Lakitu 360° Camera Orbit State
+    // Odyssey 360° Camera Orbit State
     private float _cameraYaw;
-    private float _cameraPitch = 16f;
+    private float _cameraPitch = 17f;
     private float _manualOrbitCooldown;
+    private float _snapTargetYaw;
+    private bool _isSnappingCamera;
     private CinemachineThirdPersonFollow _cmFollow;
+    private CinemachineCamera _cmCam;
+    private float _baseCameraFov = 54f;
+    private float _smoothedCamY;
+    private bool _cursorLockedMode;
+    private bool _RightDragHeld;
+
+    private float _swimPitch;
+    private float _hurtInvulnTimer;
+    private Renderer[] _heroRenderers;
 
     private Vector3 _spawnPosition;
     private Quaternion _spawnRotation;
@@ -142,942 +198,1792 @@ public class MarioRemakeController : MonoBehaviour
     private float _lastWallTouchTime = -10f;
 
     public bool IsGroundPoundingActive => _isGroundPounding || _groundPoundImpactTimer > 0f;
-    public bool IsAttackingOrSliding => _attackComboStage > 0 || _isDiving || _isBellySliding || IsGroundPoundingActive;
+    public bool IsAttackingOrSliding => _attackComboStage > 0 || _isDiving || _isBellySliding || _isSlideKicking || _isRolling || _isSpinAttacking || _isSlopeSliding || IsGroundPoundingActive;
+    public bool IsStompingDown => _verticalVelocity < -0.5f && !_cc.isGrounded && !_isLedgeHanging;
+    public float CurrentPlanarSpeed => _planarVelocity.magnitude;
+    public float CurrentVerticalSpeed => _verticalVelocity;
+    public float CurrentGroundAngle => _slopeSteepAngle;
+    public float CurrentCameraYaw => _cameraYaw;
+    public bool IsCrouching => _isCrouching;
+    public bool IsRolling => _isRolling;
+    public bool IsSpinAttacking => _isSpinAttacking;
+    public bool IsSlopeSliding => _isSlopeSliding;
+    public bool IsClimbingPole => _activePole != null;
+    public bool IsPoleHandstand => _isPoleHandstand;
+    public bool IsCarryingObject => _carriedObject != null;
+    public bool IsFirstPersonLooking => _isFirstPersonLook;
+    public bool IsSpinningBowser => _spinningBowser != null && _spinningBowser.IsBeingSpun;
     private int JumpComboStage { get; set; }
+
+    public string CurrentStateLabel
+    {
+        get
+        {
+            if (_isFirstPersonLook) return "1st-Person Look";
+            if (IsSpinningBowser) return "Spinning Bowser";
+            if (_activePole != null) return _isPoleHandstand ? "Pole Handstand" : "Pole Climb";
+            if (IsSwimming) return "Swimming";
+            if (_isLedgeHanging) return "Ledge Hang";
+            if (_isGroundPounding) return "Ground Pound";
+            if (_isRolling) return "Odyssey Roll";
+            if (_isSpinAttacking) return "Spin Attack";
+            if (_isSlopeSliding) return "Slope Slide";
+            if (_isSlideKicking) return "Slide Kick";
+            if (_isBellySliding) return "Belly Slide";
+            if (_isDiving) return "Dive";
+            if (_isWallSliding) return "Wall Slide";
+            if (_attackComboStage > 0) return $"Attack Stage {_attackComboStage}";
+            if (!_cc.isGrounded)
+            {
+                if (_isLongJumping) return "Long Jump";
+                if (_isBackflipping) return "Backflip";
+                if (_isSideFlipping) return "Side Flip";
+                if (JumpComboStage >= 3) return "Triple Flip";
+                if (JumpComboStage == 2) return "Double Jump";
+                return "Single Jump";
+            }
+            if (_carriedObject != null) return _planarVelocity.magnitude > 0.6f ? "Carry Walk" : "Carry Idle";
+            if (_isCrouching) return _planarVelocity.magnitude > 0.6f ? "Crawl" : "Crouch";
+            if (_planarVelocity.magnitude > maxRunSpeed * 0.55f) return "Run";
+            if (_planarVelocity.magnitude > 0.5f) return "Walk";
+            return "Idle";
+        }
+    }
+
+    public void OnEnteredGameplay()
+    {
+        if (autoLockCursorOnPlay && !Application.isBatchMode)
+        {
+            ToggleCursorLockMode(true);
+        }
+    }
+
+    private void RecordMoveStat(string key)
+    {
+        if (_playgroundMgr != null) _playgroundMgr.RecordMove(key);
+    }
+
+    public void BounceUpFromStomp(float height = 2.0f)
+    {
+        _isGroundPounding = false;
+        _isDiving = false;
+        _isSlideKicking = false;
+        _jumpCutApplied = false;
+        _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * height);
+        if (motion != null) motion.TriggerJumpStretch(1);
+    }
+
+    public void TeleportAndFace(Vector3 worldPos, float yawDeg)
+    {
+        if (_cc != null) _cc.enabled = false;
+        transform.position = worldPos;
+        transform.rotation = Quaternion.Euler(0f, yawDeg, 0f);
+        _planarVelocity = Vector3.zero;
+        _verticalVelocity = 0f;
+        _isDiving = false;
+        _isBellySliding = false;
+        _isSlideKicking = false;
+        _isGroundPounding = false;
+        _isLedgeHanging = false;
+        _isRolling = false;
+        _isSpinAttacking = false;
+        _isSlopeSliding = false;
+        _activePole = null;
+        _isPoleHandstand = false;
+        if (_carriedObject != null)
+        {
+            _carriedObject.ResetCarriable();
+            _carriedObject = null;
+        }
+        if (_isFirstPersonLook)
+        {
+            _isFirstPersonLook = false;
+            SetHeroVisibility(true);
+        }
+        _activePlatform = null;
+        _cameraYaw = yawDeg;
+        _smoothedCamY = worldPos.y + 1.1f;
+        if (_cc != null) _cc.enabled = true;
+    }
+
+    public void OnBowserThrown()
+    {
+        _spinningBowser = null;
+        if (motion != null) motion.IsSpinningBowser = false;
+    }
 
     private void Awake()
     {
-        Instance = this;
+        instance = this;
         _cc = GetComponent<CharacterController>();
+        if (_cc != null) _cc.slopeLimit = 50f;
+        _spawnPosition = transform.position;
+        _spawnRotation = transform.rotation;
+        _cameraYaw = transform.eulerAngles.y;
+        _prevFacingYaw = _cameraYaw;
+        _smoothedCamY = transform.position.y + 1.1f;
+        currentHealth = maxHealth;
+        currentOxygenSeconds = maxOxygenSeconds;
+        _heroRenderers = GetComponentsInChildren<Renderer>(true);
+
         if (motion == null) motion = GetComponent<ProceduralCharacterMotion>();
         if (impulseSource == null) impulseSource = GetComponent<CinemachineImpulseSource>();
         if (popProxy == null) popProxy = GetComponentInChildren<TransformScalePopRoot>();
 
-        _spawnPosition = transform.position;
-        _spawnRotation = transform.rotation;
-        _cameraYaw = transform.eulerAngles.y;
-        _lastRunDirection = transform.forward;
-        currentOxygenSeconds = maxOxygenSeconds;
-
-        var waterObj = GameObject.Find("TranslucentBayWaterSurface");
-        if (waterObj != null)
+        if (cameraYawProxy == null)
         {
-            hasWaterInCourse = true;
-            waterSurfaceY = waterObj.transform.position.y;
+            var proxy = transform.Find("CameraYawProxy");
+            if (proxy != null) cameraYawProxy = proxy;
         }
     }
 
-    public void RefillOxygen(float secondsToAdd)
+    private void Start()
     {
-        currentOxygenSeconds = Mathf.Clamp(currentOxygenSeconds + secondsToAdd, 0f, maxOxygenSeconds);
+        _playgroundMgr = FindAnyObjectByType<TestPlaygroundManager>();
+        ResolveCinemachineComponents();
+        ApplyProxyRotationImmediate();
+    }
+
+    private void ResolveCinemachineComponents()
+    {
+        if (_cmCam != null && _cmFollow != null) return;
+        foreach (var cam in FindObjectsByType<CinemachineCamera>(FindObjectsInactive.Include))
+        {
+            if (cam == null || !cam.name.Contains("Gameplay")) continue;
+            _cmCam = cam;
+            _cmFollow = cam.GetComponent<CinemachineThirdPersonFollow>();
+            // Remove conflicting RotationComposer so cameraYawProxy 360° free orbit is never overridden!
+            var rotComp = cam.GetComponent<CinemachineRotationComposer>();
+            if (rotComp != null) Destroy(rotComp);
+
+            _baseCameraFov = 54f;
+            var lens = _cmCam.Lens;
+            lens.FieldOfView = _baseCameraFov;
+            _cmCam.Lens = lens;
+            if (_cmFollow != null)
+            {
+                _cmFollow.CameraDistance = cameraDistance;
+                _cmFollow.Damping = new Vector3(0.03f, 0.08f, 0.03f);
+                _cmFollow.ShoulderOffset = new Vector3(0f, 0.44f, 0f);
+                _cmFollow.VerticalArmLength = 0.22f;
+                _cmFollow.CameraSide = 0.5f;
+            }
+            var mainCam = Camera.main;
+            var brain = mainCam != null ? mainCam.GetComponent<CinemachineBrain>() : null;
+            if (brain != null)
+            {
+                brain.DefaultBlend.Style = CinemachineBlendDefinition.Styles.EaseInOut;
+                brain.DefaultBlend.Time = 0.45f;
+            }
+            break;
+        }
     }
 
     public void ResetToSpawn()
     {
+        if (_spinningBowser != null)
+        {
+            _spinningBowser = null;
+        }
         if (_cc != null) _cc.enabled = false;
         transform.SetPositionAndRotation(_spawnPosition, _spawnRotation);
+        if (_cc != null) _cc.enabled = true;
+
         _planarVelocity = Vector3.zero;
-        _verticalVelocity = -2f;
+        _verticalVelocity = 0f;
+        _wasGrounded = true;
         JumpComboStage = 0;
         _isCrouching = false;
         _isDiving = false;
         _isBellySliding = false;
+        _isSlideKicking = false;
         _isGroundPounding = false;
         _isBackflipping = false;
         _isSideFlipping = false;
         _isLongJumping = false;
         _isWallSliding = false;
-        IsSwimming = false;
-        currentOxygenSeconds = maxOxygenSeconds;
-        _attackComboStage = 0;
-        _activePlatform = null;
-        debugMoveInput = Vector2.zero;
-        _cameraYaw = _spawnRotation.eulerAngles.y;
-        _cameraPitch = 16f;
-        if (_cc != null) _cc.enabled = true;
-        if (cameraYawProxy != null)
+        _isLedgeHanging = false;
+        _isRolling = false;
+        _isSpinAttacking = false;
+        _isSlopeSliding = false;
+        _activePole = null;
+        _isPoleHandstand = false;
+        if (_carriedObject != null)
         {
-            cameraYawProxy.SetPositionAndRotation(transform.position, Quaternion.Euler(_cameraPitch, _cameraYaw, 0f));
+            _carriedObject.ResetCarriable();
+            _carriedObject = null;
+        }
+        _isFirstPersonLook = false;
+        _groundPoundStallTimer = 0f;
+        _groundPoundImpactTimer = 0f;
+        _attackComboStage = 0;
+        _attackTimer = 0f;
+        _activePlatform = null;
+        IsSwimming = false;
+        currentHealth = maxHealth;
+        currentOxygenSeconds = maxOxygenSeconds;
+        _hurtInvulnTimer = 0f;
+        SetHeroVisibility(true);
+        _cameraYaw = transform.eulerAngles.y;
+        _cameraPitch = 17f;
+        _smoothedCamY = _spawnPosition.y + 1.1f;
+        ApplyProxyRotationImmediate();
+    }
+
+    private void OnDisable()
+    {
+        if (_cursorLockedMode)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            _cursorLockedMode = false;
         }
     }
 
     private void Update()
     {
-        var unscaledDt = Time.unscaledDeltaTime > 0.0001f ? Time.unscaledDeltaTime : 0.016f;
-
-        // 1. Update Lakitu 360° Camera Proxy
-        UpdateLakituCamera(unscaledDt);
-
-        if (GameManager.Instance != null && GameManager.Instance.currentState != GameState.Playing)
+        var playing = GameManager.Instance == null || GameManager.Instance.currentState == GameState.Playing;
+        if (!playing)
         {
-            if (Cursor.lockState == CursorLockMode.Locked)
+            if (_cursorLockedMode || Cursor.lockState == CursorLockMode.Locked)
             {
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
+                _cursorLockedMode = false;
             }
-            if (motion == null) return;
-            motion.NormalizedSpeed = 0f;
-            motion.PlanarVelocity = Vector3.zero;
-            motion.IsGrounded = true;
+            UpdateMotionComponentOnly();
             return;
         }
 
-        var dt = Time.deltaTime;
-        if (dt <= 0.0001f || _cc == null || !_cc.enabled) return;
+        var dt = Time.deltaTime > 0.0001f ? Time.deltaTime : (Time.timeScale > 0f ? 0.016f * Time.timeScale : 0f);
+        if (dt <= 0.00001f) return;
 
-        // 2. Apply Moving Platform Delta (Shove-Blocks, Rotating Bridges, Seesaws, Floating Isles)
-        ApplyMovingPlatformDelta();
+        if (_poleCooldownTimer > 0f) _poleCooldownTimer -= dt;
+        if (_spinCooldownTimer > 0f) _spinCooldownTimer -= dt;
 
-        // 3. Hazard floor recovery (water moat or deep abyss)
-        if (transform.position.y < -12.5f)
+        // 0. Check Swimming vs Grounded State + Health Flash + Abyss Respawn
+        UpdateDamageFlashAndAbyssCheck(dt);
+        if (hasWaterInCourse && CheckAndHandleSwimmingState(dt))
         {
-            ResetToSpawn();
+            UpdateMotionComponentOnly();
             return;
         }
 
-        if (_skidReversalTimer > 0f) _skidReversalTimer -= dt;
-        if (_groundPoundImpactTimer > 0f) _groundPoundImpactTimer -= dt;
-        if (_attackChainWindowTimer > 0f) _attackChainWindowTimer -= dt;
+        // 1. Handle Bowser Tail Grabbed & Spinning State (exclusive override!)
+        if (_spinningBowser != null && _spinningBowser.IsBeingSpun)
+        {
+            HandleBowserSpinControl(dt);
+            UpdateMotionComponentOnly();
+            return;
+        }
+        else if (_spinningBowser != null && !_spinningBowser.IsBeingSpun)
+        {
+            _spinningBowser = null;
+        }
 
-        var moveInput = ReadMoveInput();
-        var jumpPressed = ReadJumpPressed();
+        // 2. Carry moving platform delta BEFORE locomotion (ShoveBlocks, Seesaws, Tilts, Lifts, Rotating Bridges)
+        ApplyMovingPlatformCarry();
+
+        // 3. Gather Inputs
+        var rawInput = ReadMovementInput();
+        var (jumpPressedThisFrame, jumpHeld) = ReadJumpInput();
+        var crouchHeld = ReadCrouchHeld();
         var attackPressed = ReadAttackPressed();
         var divePressed = ReadDivePressed();
-        var crouchHeld = ReadCrouchHeld();
-        var groundPoundPressed = ReadGroundPoundPressed();
+        var rollPressed = ReadRollPressed();
+        var spinPressed = ReadSpinPressed();
+        var firstPersonTogglePressed = ReadFirstPersonPressed();
 
-        if (jumpPressed) _lastJumpPressedTime = Time.time;
+        // Support automated Playtest CLI triggers
+        if (debugGrabOrAttackTrigger)
+        {
+            debugGrabOrAttackTrigger = false;
+            attackPressed = true;
+        }
 
-        var isGrounded = _cc.isGrounded;
-        if (isGrounded)
+        if (jumpPressedThisFrame)
+        {
+            _lastJumpPressedTime = Time.time;
+        }
+
+        // 3b. First-Person C-Up Free Look Mode (`V`)
+        if (firstPersonTogglePressed)
+        {
+            if (_isFirstPersonLook)
+            {
+                ExitFirstPersonLook();
+            }
+            else if (_cc.isGrounded && !_isRolling && !_isSpinAttacking && !_isSlopeSliding && _activePole == null && _carriedObject == null)
+            {
+                _isFirstPersonLook = true;
+                _planarVelocity = Vector3.zero;
+                _verticalVelocity = 0f;
+                SetHeroVisibility(false);
+                RecordMoveStat("FirstPersonLook");
+            }
+        }
+        if (_isFirstPersonLook)
+        {
+            if (jumpPressedThisFrame || attackPressed || divePressed || spinPressed)
+            {
+                ExitFirstPersonLook();
+            }
+            else
+            {
+                _planarVelocity = Vector3.zero;
+                _verticalVelocity = -2f;
+                _cc.Move(Vector3.down * (2f * dt));
+                SetHeroVisibility(false);
+                UpdateMotionComponentOnly();
+                return;
+            }
+        }
+
+        // 3c. Climbable Pole State (SM64 Climb / Spin / Top Handstand / Pole Jump)
+        if (_activePole != null)
+        {
+            HandlePoleClimbState(rawInput, jumpPressedThisFrame, crouchHeld, dt);
+            UpdateMotionComponentOnly();
+            return;
+        }
+
+        // 4. Ledge Hang State Handling
+        if (_ledgeCooldownTimer > 0f) _ledgeCooldownTimer -= dt;
+        if (_isLedgeHanging)
+        {
+            HandleLedgeHangState(rawInput, jumpPressedThisFrame, crouchHeld, dt);
+            UpdateMotionComponentOnly();
+            return;
+        }
+
+        // Clear stale carried reference if broken externally
+        if (_carriedObject != null && _carriedObject.State != CarriableObject.CarryState.Carried)
+        {
+            _carriedObject = null;
+        }
+
+        // 5. Evaluate Grounded / Coyote State & Surface Slope
+        var grounded = _cc.isGrounded;
+        if (grounded)
         {
             _lastGroundedTime = Time.time;
-            _landedTimer += dt;
-            _isWallSliding = false;
-
+            _wallKickSteerLockTimer = 0f;
             if (!_wasGrounded)
             {
-                OnLanded();
+                OnJustLanded();
             }
+            _landedTimer += dt;
         }
         else
         {
-            _landedTimer = 0f;
-            _activePlatform = null;
+            _slopeSteepAngle = 0f;
+            if (_verticalVelocity > 0.1f) _landedTimer = 0f;
         }
 
-        // Update Crouch state on ground
-        _isCrouching = isGrounded && crouchHeld && !_isBellySliding;
-
-        // 4. Update Active Punch/Kick Combo Timer
-        UpdateAttackCombo(dt);
-
-        // 4B. Check SM64 3D Swimming & Oxygen / Power Meter State!
-        UpdateWaterAndOxygenState(moveInput, jumpPressed, attackPressed, divePressed, crouchHeld, dt);
-
-        if (IsSwimming)
+        Vector3 slopeNormal = Vector3.up;
+        if (grounded && Physics.Raycast(transform.position + Vector3.up * 0.25f, Vector3.down, out var slopeHit, 0.95f, ~0, QueryTriggerInteraction.Ignore))
         {
-            // Move CharacterController in 3D water space
-            var swimDisp = (_planarVelocity + Vector3.up * _verticalVelocity) * dt;
-            _cc.Move(swimDisp);
-            _wasGrounded = _cc.isGrounded;
+            slopeNormal = slopeHit.normal;
+            _slopeSteepAngle = Vector3.Angle(slopeNormal, Vector3.up);
+        }
 
-            if (motion == null) return;
-            motion.NormalizedSpeed = Mathf.Clamp01(_planarVelocity.magnitude / maxRunSpeed);
-            motion.PlanarVelocity = _planarVelocity;
-            motion.IsGrounded = false;
-            motion.IsSwimming = true;
-            motion.SwimPitchAngle = _swimPitch;
-            motion.IsDiving = false;
-            motion.IsCrouching = false;
-            motion.IsSliding = false;
-            motion.IsWallSliding = false;
-            motion.IsGroundPounding = false;
-            motion.AttackStage = _attackComboStage;
+        // SM64 Steep Slope Slide (> 33.5 degrees) or Crouching Slide Downhill (> 15 degrees)
+        if (grounded && _carriedObject == null && (_slopeSteepAngle > 33.5f || (_slopeSteepAngle > 15f && crouchHeld && !_isRolling)))
+        {
+            _isSlopeSliding = true;
+            _isBellySliding = true;
+            var slopeDown = Vector3.ProjectOnPlane(Vector3.down, slopeNormal);
+            slopeDown.y = 0f;
+            if (slopeDown.sqrMagnitude > 0.001f)
+            {
+                slopeDown.Normalize();
+                _planarVelocity += slopeDown * (21f * dt);
+                var maxSlide = Mathf.Lerp(13.5f, 18.5f, Mathf.Clamp01((_slopeSteepAngle - 15f) / 35f));
+                if (_planarVelocity.magnitude > maxSlide) _planarVelocity = _planarVelocity.normalized * maxSlide;
+            }
+            RecordMoveStat("SlopeSlide");
+        }
+        else if (_isSlopeSliding && (!grounded || _slopeSteepAngle <= 14f))
+        {
+            _isSlopeSliding = false;
+        }
+
+        // 6. Camera-Relative Planar Move Direction
+        var camForward = Quaternion.Euler(0f, _cameraYaw, 0f) * Vector3.forward;
+        var camRight = Quaternion.Euler(0f, _cameraYaw, 0f) * Vector3.right;
+        var moveInputDir = (camForward * rawInput.y + camRight * rawInput.x);
+        var moveMagnitude = Mathf.Clamp01(rawInput.magnitude);
+        if (moveInputDir.sqrMagnitude > 0.001f) moveInputDir.Normalize();
+
+        if (_wallKickSteerLockTimer > 0f)
+        {
+            _wallKickSteerLockTimer -= dt;
+            // Temporarily blend away from wall so holding direction toward wall doesn't kill the wall kick!
+            moveInputDir = Vector3.Slerp(_wallKickSteerDir, moveInputDir, 0.35f).normalized;
+        }
+
+        // 6b. Latch onto ClimbablePole while jumping near or running directly into one
+        if (TryLatchOntoPole(grounded, moveInputDir, moveMagnitude))
+        {
+            UpdateMotionComponentOnly();
             return;
         }
-        else if (motion != null)
+
+        // 7. Ground Pound Impact Timer, Crouch & Odyssey Roll Timers
+        if (_groundPoundImpactTimer > 0f)
         {
-            motion.IsSwimming = false;
-            motion.SwimPitchAngle = 0f;
+            _groundPoundImpactTimer -= dt;
+        }
+        if (_isRolling)
+        {
+            _rollTimer -= dt;
+            CheckMeleeHitbox(transform.position + transform.forward * 0.75f + Vector3.up * 0.55f, 1.25f);
+            if (_rollTimer <= 0f || !grounded || _isSlopeSliding || _planarVelocity.magnitude < 4.0f)
+            {
+                _isRolling = false;
+            }
+        }
+        if (_isSpinAttacking)
+        {
+            _spinTimer -= dt;
+            CheckMeleeHitbox(transform.position + Vector3.up * 0.65f, 2.25f);
+            if (_spinTimer <= 0f)
+            {
+                _isSpinAttacking = false;
+            }
         }
 
-        // 5. Handle Ground Pound Stall & Slam
+        // Carry Drop on Crouch tap
+        if (_carriedObject != null && grounded && ReadCrouchPressedThisFrame())
+        {
+            _carriedObject.DropAtFeet(transform.position + transform.forward * 0.95f + Vector3.up * 0.25f, transform.rotation);
+            _carriedObject = null;
+        }
+
+        _isCrouching = grounded && crouchHeld && _carriedObject == null && !_isDiving && !_isBellySliding && !_isSlideKicking && !_isRolling && !_isSlopeSliding && _attackComboStage == 0;
+
+        // 8. Combat Attacks (Throw Carried, Pickup, 3-Hit Punch-Kick, Air Kick, Sweep Kick, Slide Kick, Tail Grab)
+        UpdateAttackState(dt);
+        if (attackPressed && !_isGroundPounding)
+        {
+            TriggerMarioAttack(grounded, moveInputDir);
+        }
+
+        // 8b. Odyssey Spin Attack (`Z` / `X`) + Mid-Air Spin Hover
+        if (spinPressed && _carriedObject == null && !_isGroundPounding && _spinCooldownTimer <= 0f)
+        {
+            TriggerSpinAttack(grounded, moveInputDir);
+        }
+
+        // 8c. Odyssey Roll (`LeftShift` on ground, `Crouch+E`, or Ground-Pound Impact Rollout!)
+        if (rollPressed && grounded && _carriedObject == null && !_isGroundPounding && !_isSlopeSliding && !_isRolling)
+        {
+            StartOdysseyRoll(moveInputDir.sqrMagnitude > 0.05f ? moveInputDir : transform.forward);
+        }
+
+        // 9. Dedicated Dive (`E` / `Q`) — ALSO supports Pro Trick: Ground-Pound -> Dive Cancel!
+        if (divePressed && _carriedObject == null)
+        {
+            if (_isGroundPounding && _groundPoundStallTimer > 0f)
+            {
+                // Ground-Pound -> Dive Cancel! Classic Odyssey / Modern SM64 movement tech!
+                _isGroundPounding = false;
+                _groundPoundStallTimer = 0f;
+                var gpDiveDir = moveInputDir.sqrMagnitude > 0.05f ? moveInputDir : transform.forward;
+                LaunchDive(gpDiveDir, bonusUpVel: 4.6f, speedBoost: 11.4f);
+            }
+            else if (!_isDiving && !_isBellySliding && !_isGroundPounding && !_isRolling)
+            {
+                var dDir = moveInputDir.sqrMagnitude > 0.05f ? moveInputDir : transform.forward;
+                LaunchDive(dDir, bonusUpVel: grounded ? 4.4f : 2.8f, speedBoost: grounded ? 10.6f : 11.2f);
+            }
+        }
+
+        // 10. Air Ground Pound (`C` / Ctrl / Shift in mid-air)
+        if (!grounded && _carriedObject == null && ReadGroundPoundPressed() && !_isGroundPounding && !_isDiving && !_isSlideKicking)
+        {
+            StartGroundPound();
+        }
+
+        // 11. Jump & Acrobatics Execution
+        var canCoyoteJump = (Time.time - _lastGroundedTime) <= coyoteTimeSeconds;
+        var hasBufferedJump = (Time.time - _lastJumpPressedTime) <= jumpBufferSeconds;
+        if (hasBufferedJump)
+        {
+            if (_isBellySliding || _isSlideKicking || _isSlopeSliding || _isRolling)
+            {
+                // Dive / Slide / Slope / Roll -> Long-Rollout Hop!
+                bool wasRollJump = _isRolling;
+                _lastJumpPressedTime = -10f;
+                _isBellySliding = false;
+                _isSlideKicking = false;
+                _isSlopeSliding = false;
+                _isRolling = false;
+                _isDiving = false;
+                _isLongJumping = wasRollJump;
+                _jumpCutApplied = false;
+                _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * (wasRollJump ? 2.25f : 1.95f));
+                _planarVelocity = transform.forward * Mathf.Max(_planarVelocity.magnitude * (wasRollJump ? 0.96f : 0.92f), wasRollJump ? 12.2f : 7.6f);
+                JumpComboStage = 1;
+                if (wasRollJump) RecordMoveStat("LongJump");
+                if (motion != null) motion.TriggerJumpStretch(2);
+                if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
+                if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
+            }
+            else if (canCoyoteJump && !_isGroundPounding)
+            {
+                _lastJumpPressedTime = -10f;
+                ExecuteJump(moveInputDir);
+            }
+            else if (!grounded && _carriedObject == null && (Time.time - _lastWallTouchTime) <= 0.22f && !_isGroundPounding)
+            {
+                _lastJumpPressedTime = -10f;
+                ExecuteWallKick();
+            }
+        }
+
+        // Odyssey Variable Jump Height: releasing Space while rising cuts upward lift crisply!
+        if (!jumpHeld && !_jumpCutApplied && _verticalVelocity > 3.2f && !IsJumpUncuttable())
+        {
+            _jumpCutApplied = true;
+            _verticalVelocity *= 0.56f;
+        }
+
+        // 12. Planar Physics + Steering + Skid Detection
         if (_isGroundPounding)
         {
-            _planarVelocity = Vector3.zero;
-            if (_groundPoundStallTimer > 0f)
-            {
-                _groundPoundStallTimer -= dt;
-                _verticalVelocity = 0f;
-            }
-            else
-            {
-                _verticalVelocity = -36f;
-            }
+            UpdateGroundPoundPhysics(dt);
         }
         else
         {
-            UpdatePlanarMovement(moveInput, isGrounded, dt);
-            HandleJumpAndAcrobatics(isGrounded, attackPressed, divePressed, groundPoundPressed);
+            UpdatePlanarLocomotion(grounded, rawInput, moveInputDir, moveMagnitude, dt);
+            UpdateVerticalPhysics(grounded, dt);
         }
 
-        // 6. Gravity & Wall-Slide Friction
-        if (!_isGroundPounding)
+        // 13. Wall Slide & Auto Ledge-Grab Check
+        _isWallSliding = !grounded && _carriedObject == null && !_isGroundPounding && _verticalVelocity < -1.0f && (Time.time - _lastWallTouchTime) < 0.14f;
+        if (_isWallSliding)
         {
-            var touchingWallInAir = !isGrounded && (Time.time - _lastWallTouchTime) <= 0.14f && _verticalVelocity < 0f;
-            _isWallSliding = touchingWallInAir;
-
-            if (isGrounded && _verticalVelocity < 0f)
+            _verticalVelocity = Mathf.Max(_verticalVelocity, -3.8f);
+            if (Mathf.Abs(Mathf.Sin(Time.time * 18f)) > 0.85f && VFXPool.Instance != null)
             {
-                _verticalVelocity = -3.5f;
-            }
-            else if (_isWallSliding)
-            {
-                // Wall friction slows descent like SM64!
-                _verticalVelocity = Mathf.Max(_verticalVelocity + gravity * 0.35f * dt, -5.5f);
-            }
-            else
-            {
-                _verticalVelocity += gravity * dt;
-                if (_verticalVelocity < -30f) _verticalVelocity = -30f;
+                VFXPool.Instance.SpawnFootstepPuff(transform.position + Vector3.up * 0.65f);
             }
         }
 
-        // 7. Move CharacterController
-        var finalDisp = (_planarVelocity + Vector3.up * _verticalVelocity) * dt;
-        var flags = _cc.Move(finalDisp);
+        // 14. Execute CharacterController Move
+        var totalMotion = (_planarVelocity + Vector3.up * _verticalVelocity) * dt;
+        var flags = _cc.Move(totalMotion);
 
-        if ((flags & CollisionFlags.Sides) != 0 && !isGrounded)
+        if ((flags & CollisionFlags.Above) != 0 && _verticalVelocity > 0f)
         {
-            _lastWallTouchTime = Time.time;
+            _verticalVelocity = 0f;
+        }
+        if ((flags & CollisionFlags.Below) != 0)
+        {
+            _wasGrounded = true;
+        }
+        else
+        {
+            _wasGrounded = false;
+            // Try Ledge Grab while falling near platform edge!
+            if (_verticalVelocity < 0.8f && _carriedObject == null && !_isGroundPounding && _ledgeCooldownTimer <= 0f)
+            {
+                TryCatchLedge(moveInputDir);
+            }
         }
 
-        _wasGrounded = isGrounded;
-
-        // 8. Drive ProceduralCharacterMotion Poses
-        if (motion == null) return;
-        motion.NormalizedSpeed = Mathf.Clamp01(_planarVelocity.magnitude / maxRunSpeed);
-        motion.PlanarVelocity = _planarVelocity;
-        motion.IsGrounded = isGrounded;
-        motion.JumpStage = JumpComboStage;
-        motion.IsDiving = _isDiving;
-        motion.IsCrouching = _isCrouching;
-        motion.IsSliding = _isBellySliding;
-        motion.IsWallSliding = _isWallSliding;
-        motion.IsGroundPounding = _isGroundPounding;
-        motion.GroundPoundStallNormalized = Mathf.Clamp01(_groundPoundStallTimer / 0.18f);
-        motion.IsBackflipping = _isBackflipping;
-        motion.IsSideFlipping = _isSideFlipping;
-        motion.IsLongJumping = _isLongJumping;
-        motion.AttackStage = _attackComboStage;
-        motion.AttackProgress = _attackDuration > 0.001f ? Mathf.Clamp01(1f - (_attackTimer / _attackDuration)) : 0f;
+        UpdateMotionComponentOnly();
     }
 
-    private void UpdateLakituCamera(float unscaledDt)
+    private void LateUpdate()
     {
-        if (cameraYawProxy == null) return;
+        // Camera runs in LateUpdate AFTER CharacterController.Move -> ZERO frame lag!
+        var playing = GameManager.Instance == null || GameManager.Instance.currentState == GameState.Playing;
+        var dt = Time.deltaTime > 0.0001f ? Time.deltaTime : 0.016f;
+        UpdateOdysseyCamera(dt, playing);
+    }
 
-        var isPlaying = GameManager.Instance == null || GameManager.Instance.currentState == GameState.Playing;
-        if (!isPlaying)
+    private bool IsJumpUncuttable()
+    {
+        return _isLongJumping || _isBackflipping || _isSideFlipping || JumpComboStage >= 3;
+    }
+
+    // -------------------------------------------------------------------------
+    // BOWSER TAIL GRAB & 360° SPIN CONTROL
+    // -------------------------------------------------------------------------
+    private void HandleBowserSpinControl(float dt)
+    {
+        var kb = Keyboard.current;
+        var mouse = Mouse.current;
+        var gp = Gamepad.current;
+
+        float spinInput = 0f;
+        if (kb != null)
         {
-            cameraYawProxy.position = Vector3.Lerp(cameraYawProxy.position, transform.position, 1f - Mathf.Exp(-14f * unscaledDt));
+            if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) spinInput += 1f;
+            if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) spinInput -= 1f;
+        }
+        if (mouse != null)
+        {
+            float dx = mouse.delta.ReadValue().x;
+            spinInput -= dx * 0.25f;
+        }
+        if (gp != null)
+        {
+            spinInput -= gp.leftStick.ReadValue().x;
+        }
+
+        bool throwBtn = false;
+        if (mouse != null && (mouse.leftButton.wasPressedThisFrame || mouse.leftButton.wasReleasedThisFrame))
+            throwBtn = true;
+        if (kb != null && (kb.fKey.wasPressedThisFrame || kb.jKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame || kb.eKey.wasPressedThisFrame))
+            throwBtn = true;
+        if (gp != null && (gp.buttonWest.wasPressedThisFrame || gp.buttonSouth.wasPressedThisFrame))
+            throwBtn = true;
+        if (debugGrabOrAttackTrigger)
+        {
+            debugGrabOrAttackTrigger = false;
+            throwBtn = true;
+        }
+
+        _spinningBowser.FeedSpinInput(spinInput * 360f * dt, throwBtn);
+
+        if (motion != null)
+        {
+            motion.IsGrounded = true;
+            motion.IsSpinningBowser = true;
+            motion.NormalizedSpeed = 0f;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // LEDGE GRAB & VAULT CLIMB
+    // -------------------------------------------------------------------------
+    private void TryCatchLedge(Vector3 moveDir)
+    {
+        Vector3 checkFwd = moveDir.sqrMagnitude > 0.05f ? moveDir.normalized : transform.forward;
+        Vector3 chestOrigin = transform.position + Vector3.up * 1.15f;
+
+        if (!Physics.Raycast(chestOrigin, checkFwd, out var wallHit, 0.72f)) return;
+        if (wallHit.collider.isTrigger) return;
+        if (Mathf.Abs(wallHit.normal.y) > 0.28f) return;
+
+        // Cast down slightly past the wall surface from head height + 0.55m
+        Vector3 probeTop = wallHit.point + Vector3.up * 0.85f - wallHit.normal * 0.28f;
+        if (!Physics.Raycast(probeTop, Vector3.down, out var topHit, 1.05f)) return;
+        if (topHit.collider.isTrigger || Vector3.Angle(topHit.normal, Vector3.up) > 28f) return;
+
+        float ledgeHeightAboveFeet = topHit.point.y - transform.position.y;
+        if (ledgeHeightAboveFeet < 0.75f || ledgeHeightAboveFeet > 1.72f) return;
+
+        _isLedgeHanging = true;
+        _isDiving = false;
+        _isBackflipping = false;
+        _isSideFlipping = false;
+        _isLongJumping = false;
+        _isRolling = false;
+        _isSpinAttacking = false;
+        _planarVelocity = Vector3.zero;
+        _verticalVelocity = 0f;
+        _ledgeTopPos = topHit.point;
+        _ledgeForward = new Vector3(-wallHit.normal.x, 0f, -wallHit.normal.z).normalized;
+
+        Vector3 hangPos = new Vector3(wallHit.point.x + wallHit.normal.x * 0.42f, topHit.point.y - 1.48f, wallHit.point.z + wallHit.normal.z * 0.42f);
+        if (_cc != null) _cc.enabled = false;
+        transform.position = hangPos;
+        if (_ledgeForward.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(_ledgeForward, Vector3.up);
+        if (_cc != null) _cc.enabled = true;
+
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayLedgeClimbSound();
+    }
+
+    private void HandleLedgeHangState(Vector2 rawInput, bool jumpPressed, bool crouchHeld, float dt)
+    {
+        _planarVelocity = Vector3.zero;
+        _verticalVelocity = 0f;
+
+        var camForward = Quaternion.Euler(0f, _cameraYaw, 0f) * Vector3.forward;
+        var camRight = Quaternion.Euler(0f, _cameraYaw, 0f) * Vector3.right;
+        var inputWorld = (camForward * rawInput.y + camRight * rawInput.x);
+        bool pushTowardLedge = inputWorld.magnitude > 0.3f && Vector3.Dot(inputWorld.normalized, _ledgeForward) > 0.35f;
+
+        if (jumpPressed || pushTowardLedge)
+        {
+            // Vault crisply onto ledge top!
+            _isLedgeHanging = false;
+            _ledgeCooldownTimer = 0.28f;
+            if (_cc != null) _cc.enabled = false;
+            transform.position = _ledgeTopPos + _ledgeForward * 0.32f + Vector3.up * 0.06f;
+            if (_cc != null) _cc.enabled = true;
+            _verticalVelocity = jumpPressed ? Mathf.Sqrt(2f * Mathf.Abs(gravity) * 1.45f) : 0f;
+            _planarVelocity = _ledgeForward * 3.8f;
+            RecordMoveStat("LedgeClimb");
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(1);
+            if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(_ledgeTopPos);
             return;
         }
 
-        // Mouse Look + Keyboard C-Buttons (Q/E or Left/Right Arrow) + Gamepad Right Stick
-        var yawInput = 0f;
-        var pitchInput = 0f;
-
-        var mouse = Mouse.current;
-        if (mouse != null)
+        if (crouchHeld || (inputWorld.magnitude > 0.3f && Vector3.Dot(inputWorld.normalized, _ledgeForward) < -0.45f))
         {
-            // Lock cursor when left/right clicking inside Game View during Playing state
-            if (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame)
-            {
-                Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
-            }
+            // Drop cleanly down!
+            _isLedgeHanging = false;
+            _ledgeCooldownTimer = 0.42f;
+            _verticalVelocity = -2.0f;
+        }
+    }
 
-            if (Cursor.lockState == CursorLockMode.Locked || mouse.rightButton.isPressed)
-            {
-                var delta = mouse.delta.ReadValue();
-                yawInput += delta.x * mouseSensitivity;
-                pitchInput -= delta.y * mouseSensitivity * 0.75f;
-            }
+    // -------------------------------------------------------------------------
+    // FIRST-PERSON LOOK, CLIMBABLE POLES & ODYSSEY ROLL / SPIN ATTACK
+    // -------------------------------------------------------------------------
+    private void ExitFirstPersonLook()
+    {
+        _isFirstPersonLook = false;
+        SetHeroVisibility(true);
+    }
 
-            // Scroll wheel zooms Lakitu camera distance!
-            var scroll = mouse.scroll.ReadValue().y;
-            if (Mathf.Abs(scroll) > 0.01f)
-            {
-                cameraDistance = Mathf.Clamp(cameraDistance - Mathf.Sign(scroll) * 0.65f, 3.8f, 11.5f);
-            }
+    private bool TryLatchOntoPole(bool grounded, Vector3 moveInputDir, float moveMagnitude)
+    {
+        if (_poleCooldownTimer > 0f || _carriedObject != null || _isGroundPounding || _isSlopeSliding || _isRolling)
+            return false;
 
-            if (mouse.middleButton.wasPressedThisFrame)
-            {
-                SnapCameraBehindMario();
-            }
+        var pos = transform.position;
+        foreach (var pole in FindObjectsByType<ClimbablePole>(FindObjectsInactive.Exclude))
+        {
+            if (pole == null || !pole.gameObject.activeInHierarchy) continue;
+            var center = pole.transform.position;
+            var toPoleXZ = new Vector3(center.x - pos.x, 0f, center.z - pos.z);
+            float distXZ = toPoleXZ.magnitude;
+            if (distXZ > pole.grabRadius) continue;
+            if (pos.y < pole.WorldBottomY - 0.15f || pos.y > pole.WorldTopY + 0.15f) continue;
+
+            // Avoid unwanted sticky snap when running past base on flat ground unless pushing directly into pole
+            bool airborneGrab = !grounded && pos.y > pole.WorldBottomY + 0.2f;
+            bool pushingIntoPole = moveMagnitude > 0.25f && distXZ > 0.05f && Vector3.Dot(moveInputDir, toPoleXZ / distXZ) > 0.55f;
+            if (!airborneGrab && !pushingIntoPole) continue;
+
+            _activePole = pole;
+            _isPoleHandstand = false;
+            _isDiving = false;
+            _isBellySliding = false;
+            _isSlideKicking = false;
+            _isBackflipping = false;
+            _isSideFlipping = false;
+            _isLongJumping = false;
+            _isSpinAttacking = false;
+            _planarVelocity = Vector3.zero;
+            _verticalVelocity = 0f;
+            _poleHeight = Mathf.Clamp(pos.y, pole.WorldBottomY + 0.35f, pole.WorldTopY - 0.2f);
+            var outward = -toPoleXZ;
+            _poleAngleDeg = outward.sqrMagnitude > 0.001f
+                ? Mathf.Atan2(outward.x, outward.z) * Mathf.Rad2Deg
+                : (transform.eulerAngles.y + 180f);
+
+            PositionHeroOnPole();
+            RecordMoveStat("PoleClimb");
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayLedgeClimbSound();
+            return true;
+        }
+        return false;
+    }
+
+    private void HandlePoleClimbState(Vector2 rawInput, bool jumpPressed, bool crouchHeld, float dt)
+    {
+        if (_activePole == null || !_activePole.gameObject.activeInHierarchy)
+        {
+            _activePole = null;
+            _isPoleHandstand = false;
+            return;
         }
 
-        var kb = Keyboard.current;
-        if (kb != null)
+        _planarVelocity = Vector3.zero;
+        _verticalVelocity = 0f;
+
+        float climbInput = rawInput.y;
+        float spinInput = rawInput.x;
+        if (Mathf.Abs(spinInput) > 0.1f && !_isPoleHandstand)
         {
-            if (kb.qKey.isPressed || kb.leftArrowKey.isPressed) yawInput -= keyboardOrbitSpeed * unscaledDt;
-            if (kb.eKey.isPressed || kb.rightArrowKey.isPressed) yawInput += keyboardOrbitSpeed * unscaledDt;
-            if (kb.rKey.wasPressedThisFrame || kb.tabKey.wasPressedThisFrame)
-            {
-                SnapCameraBehindMario();
-            }
-            if (kb.zKey.wasPressedThisFrame) cameraDistance = 4.5f; // Close Mario Cam
-            if (kb.xKey.wasPressedThisFrame) cameraDistance = 8.8f; // Wide Lakitu Cam
+            _poleAngleDeg += spinInput * 165f * dt;
         }
 
-        var gp = Gamepad.current;
-        if (gp != null)
+        if (_isPoleHandstand)
         {
-            var rStick = gp.rightStick.ReadValue();
-            if (rStick.sqrMagnitude > 0.02f)
+            if (climbInput < -0.25f || crouchHeld)
             {
-                yawInput += rStick.x * keyboardOrbitSpeed * 1.15f * unscaledDt;
-                pitchInput -= rStick.y * keyboardOrbitSpeed * 0.65f * unscaledDt;
+                _isPoleHandstand = false;
+                _poleHeight = _activePole.WorldTopY - 0.35f;
             }
-            if (gp.rightStickButton.wasPressedThisFrame)
-            {
-                SnapCameraBehindMario();
-            }
-        }
-
-        if (Mathf.Abs(yawInput) > 0.001f || Mathf.Abs(pitchInput) > 0.001f)
-        {
-            _cameraYaw += yawInput;
-            _cameraPitch = Mathf.Clamp(_cameraPitch + pitchInput, minCameraPitch, maxCameraPitch);
-            _manualOrbitCooldown = 1.25f;
         }
         else
         {
-            if (_manualOrbitCooldown > 0f) _manualOrbitCooldown -= unscaledDt;
-
-            // Gentle Lakitu auto-follow yaw when Mario runs sideways and player isn't actively moving mouse
-            if (_manualOrbitCooldown <= 0f && _planarVelocity.sqrMagnitude > 2.5f)
+            if (climbInput > 0.15f)
             {
-                var velYaw = Mathf.Atan2(_planarVelocity.x, _planarVelocity.z) * Mathf.Rad2Deg;
-                var angleDiff = Mathf.DeltaAngle(_cameraYaw, velYaw);
-                // Only gently nudge when running perpendicular, never whip when running toward camera!
-                if (Mathf.Abs(angleDiff) is > 20f and < 135f)
+                _poleHeight += climbInput * 4.9f * dt;
+                if (_poleHeight >= _activePole.WorldTopY - 0.14f)
                 {
-                    _cameraYaw = Mathf.MoveTowardsAngle(_cameraYaw, velYaw, Mathf.Abs(angleDiff) * autoFollowYawStrength * unscaledDt);
+                    _poleHeight = _activePole.WorldTopY;
+                    _isPoleHandstand = true;
+                    RecordMoveStat("PoleHandstand");
+                    if (GameAudio.Instance != null) GameAudio.Instance.PlayLedgeClimbSound();
+                }
+            }
+            else if (climbInput < -0.15f)
+            {
+                _poleHeight += climbInput * 6.4f * dt;
+                if (_poleHeight <= _activePole.WorldBottomY + 0.16f)
+                {
+                    var radOut = Quaternion.Euler(0f, _poleAngleDeg, 0f) * Vector3.forward;
+                    if (_cc != null) _cc.enabled = false;
+                    transform.position = new Vector3(_activePole.transform.position.x, _activePole.WorldBottomY + 0.05f, _activePole.transform.position.z) + radOut * (_activePole.poleRadius + 0.65f);
+                    if (_cc != null) _cc.enabled = true;
+                    _activePole = null;
+                    _isPoleHandstand = false;
+                    _poleCooldownTimer = 0.45f;
+                    return;
                 }
             }
         }
 
-        cameraYawProxy.position = Vector3.Lerp(cameraYawProxy.position, transform.position, 1f - Mathf.Exp(-18f * unscaledDt));
-        var targetRot = Quaternion.Euler(_cameraPitch, _cameraYaw, 0f);
-        cameraYawProxy.rotation = Quaternion.Slerp(cameraYawProxy.rotation, targetRot, 1f - Mathf.Exp(-16f * unscaledDt));
-
-        if (_cmFollow == null && GameManager.Instance != null && GameManager.Instance.gameplayVCamObject != null)
+        if (jumpPressed)
         {
-            _cmFollow = GameManager.Instance.gameplayVCamObject.GetComponent<CinemachineThirdPersonFollow>();
+            var kickDir = (Quaternion.Euler(0f, _poleAngleDeg, 0f) * Vector3.forward).normalized;
+            float launchH = _isPoleHandstand ? 3.25f : 2.65f;
+            if (_cc != null) _cc.enabled = false;
+            transform.position = _activePole.GetSurfacePoint(_poleHeight, kickDir) + kickDir * 0.32f;
+            transform.rotation = Quaternion.LookRotation(kickDir, Vector3.up);
+            if (_cc != null) _cc.enabled = true;
+
+            _activePole = null;
+            _isPoleHandstand = false;
+            _poleCooldownTimer = 0.45f;
+            _jumpCutApplied = false;
+            JumpComboStage = 2;
+            _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * launchH);
+            _planarVelocity = kickDir * 8.2f;
+            if (motion != null) motion.TriggerJumpStretch(2);
+            if (GameAudio.Instance != null)
+            {
+                GameAudio.Instance.PlayWallKickSound();
+                GameAudio.Instance.PlayJumpSound(2);
+            }
+            if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
+            return;
         }
+
+        PositionHeroOnPole();
+    }
+
+    private void PositionHeroOnPole()
+    {
+        if (_activePole == null) return;
+        var outward = (Quaternion.Euler(0f, _poleAngleDeg, 0f) * Vector3.forward).normalized;
+        if (_cc != null) _cc.enabled = false;
+        if (_isPoleHandstand)
+        {
+            var c = _activePole.transform.position;
+            transform.position = new Vector3(c.x, _activePole.WorldTopY + 0.08f, c.z);
+            transform.rotation = Quaternion.LookRotation(-outward, Vector3.up);
+        }
+        else
+        {
+            transform.position = _activePole.GetSurfacePoint(_poleHeight, outward);
+            transform.rotation = Quaternion.LookRotation(-outward, Vector3.up);
+        }
+        if (_cc != null) _cc.enabled = true;
+    }
+
+    private void StartOdysseyRoll(Vector3 dir)
+    {
+        var rollDir = dir.sqrMagnitude > 0.05f ? new Vector3(dir.x, 0f, dir.z).normalized : transform.forward;
+        _isRolling = true;
+        _rollTimer = 0.68f;
+        _isCrouching = false;
+        _isDiving = false;
+        _isBellySliding = false;
+        _isSlideKicking = false;
+        _groundPoundImpactTimer = 0f;
+        _attackComboStage = 0;
+
+        _planarVelocity = rollDir * Mathf.Max(_planarVelocity.magnitude, 14.5f);
+        transform.rotation = Quaternion.LookRotation(rollDir, Vector3.up);
+        RecordMoveStat("OdysseyRoll");
+        if (motion != null) motion.TriggerJumpStretch(1);
+        if (GameAudio.Instance != null) GameAudio.Instance.PlaySkidSound();
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position + Vector3.up * 0.25f);
+        CheckMeleeHitbox(transform.position + rollDir * 0.85f + Vector3.up * 0.55f, 1.35f);
+    }
+
+    private void TriggerSpinAttack(bool grounded, Vector3 moveDir)
+    {
+        _isSpinAttacking = true;
+        _spinTimer = 0.36f;
+        _spinCooldownTimer = 0.50f;
+        _attackComboStage = 7;
+        _attackDuration = 0.36f;
+        _attackTimer = 0.36f;
+        _attackHitRegistered = false;
+
+        if (!grounded && !_usedAirSpinHover)
+        {
+            _usedAirSpinHover = true;
+            _verticalVelocity = Mathf.Max(_verticalVelocity, 4.6f);
+        }
+        if (moveDir.sqrMagnitude > 0.05f)
+        {
+            _planarVelocity = Vector3.MoveTowards(_planarVelocity, moveDir * maxRunSpeed, 3.5f);
+        }
+
+        RecordMoveStat("SpinAttack");
+        if (motion != null) motion.TriggerJumpStretch(1);
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(1);
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 0.6f, isStar: false);
+        CheckMeleeHitbox(transform.position + Vector3.up * 0.65f, 2.25f);
+    }
+
+    private bool TryPickUpNearbyCarriable()
+    {
+        if (_carriedObject != null) return false;
+        CarriableObject best = null;
+        float bestDist = 1.85f;
+        var chestPos = transform.position + transform.forward * 0.65f + Vector3.up * 0.5f;
+        foreach (var carriable in FindObjectsByType<CarriableObject>(FindObjectsInactive.Exclude))
+        {
+            if (carriable == null || !carriable.CanBePickedUp) continue;
+            float d = Vector3.Distance(chestPos, carriable.transform.position + Vector3.up * 0.35f);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                best = carriable;
+            }
+        }
+        if (best != null)
+        {
+            _carriedObject = best;
+            _carriedObject.PickUp(transform);
+            _attackComboStage = 0;
+            return true;
+        }
+        return false;
+    }
+
+    // -------------------------------------------------------------------------
+    // ODYSSEY FREE 360° CAMERA (LateUpdate)
+    // -------------------------------------------------------------------------
+    private void UpdateOdysseyCamera(float dt, bool playing)
+    {
+        ResolveCinemachineComponents();
+
+        float yawBefore = _cameraYaw;
+
+        if (playing)
+        {
+            var mouse = Mouse.current;
+            var kb = Keyboard.current;
+            var gp = Gamepad.current;
+
+            bool altHeld = kb != null && (kb.leftAltKey.isPressed || kb.rightAltKey.isPressed);
+            if (altHeld && _cursorLockedMode)
+            {
+                ToggleCursorLockMode(false);
+            }
+
+            if (debugOrbitDelta.sqrMagnitude > 0.0001f)
+            {
+                _cameraYaw += debugOrbitDelta.x;
+                _cameraPitch = Mathf.Clamp(_cameraPitch + debugOrbitDelta.y, _isFirstPersonLook ? -68f : minCameraPitch, _isFirstPersonLook ? 72f : maxCameraPitch);
+                debugOrbitDelta = Vector2.zero;
+                _manualOrbitCooldown = 1.45f;
+                _isSnappingCamera = false;
+            }
+
+            if (mouse != null)
+            {
+                bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+
+                // Toggle Cursor Free-Mouselook with Tab or F9, OR click GameView cleanly!
+                if (kb != null && (kb.tabKey.wasPressedThisFrame || kb.f9Key.wasPressedThisFrame))
+                {
+                    ToggleCursorLockMode(!_cursorLockedMode);
+                }
+                else if (autoLockCursorOnPlay && !_cursorLockedMode && !altHeld && !overUi && !Application.isBatchMode
+                         && (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame))
+                {
+                    ToggleCursorLockMode(true);
+                }
+
+                // Mouse always orbits smoothly when locked OR right-dragged anywhere off UI!
+                bool rightHeld = mouse.rightButton.isPressed;
+                var delta = mouse.delta.ReadValue();
+                if ((_cursorLockedMode && Cursor.lockState == CursorLockMode.Locked) || (rightHeld && !overUi))
+                {
+                    if (delta.sqrMagnitude > 0.01f)
+                    {
+                        _cameraYaw += delta.x * mouseSensitivity;
+                        _cameraPitch = Mathf.Clamp(_cameraPitch - delta.y * mouseSensitivity, _isFirstPersonLook ? -68f : minCameraPitch, _isFirstPersonLook ? 72f : maxCameraPitch);
+                        _manualOrbitCooldown = 1.45f;
+                        _isSnappingCamera = false;
+                    }
+                }
+
+                if (mouse.middleButton.wasPressedThisFrame && !_isFirstPersonLook)
+                {
+                    SnapCameraBehindMario();
+                }
+
+                var scroll = mouse.scroll.ReadValue().y;
+                if (Mathf.Abs(scroll) > 0.01f && !_isFirstPersonLook)
+                {
+                    cameraDistance = Mathf.Clamp(cameraDistance - Mathf.Sign(scroll) * 0.72f, 2.4f, 14.0f);
+                }
+            }
+
+            if (kb != null)
+            {
+                var yawDelta = 0f;
+                if (kb.leftArrowKey.isPressed) yawDelta -= 1f;
+                if (kb.rightArrowKey.isPressed) yawDelta += 1f;
+                if (Mathf.Abs(yawDelta) > 0.01f)
+                {
+                    _cameraYaw += yawDelta * keyboardOrbitSpeed * dt;
+                    _manualOrbitCooldown = 1.45f;
+                    _isSnappingCamera = false;
+                }
+
+                var pitchDelta = 0f;
+                if (kb.upArrowKey.isPressed) pitchDelta += 1f;
+                if (kb.downArrowKey.isPressed) pitchDelta -= 1f;
+                if (Mathf.Abs(pitchDelta) > 0.01f)
+                {
+                    _cameraPitch = Mathf.Clamp(_cameraPitch + pitchDelta * (keyboardOrbitSpeed * 0.65f) * dt, _isFirstPersonLook ? -68f : minCameraPitch, _isFirstPersonLook ? 72f : maxCameraPitch);
+                    _manualOrbitCooldown = 1.45f;
+                }
+
+                if (kb.rKey.wasPressedThisFrame && !_isFirstPersonLook)
+                {
+                    SnapCameraBehindMario();
+                }
+            }
+
+            if (gp != null)
+            {
+                var rStick = gp.rightStick.ReadValue();
+                if (rStick.sqrMagnitude > 0.02f)
+                {
+                    _cameraYaw += rStick.x * keyboardOrbitSpeed * 1.25f * dt;
+                    _cameraPitch = Mathf.Clamp(_cameraPitch - rStick.y * (keyboardOrbitSpeed * 0.7f) * dt, _isFirstPersonLook ? -68f : minCameraPitch, _isFirstPersonLook ? 72f : maxCameraPitch);
+                    _manualOrbitCooldown = 1.45f;
+                    _isSnappingCamera = false;
+                }
+                if ((gp.rightStickButton.wasPressedThisFrame || gp.leftTrigger.wasPressedThisFrame) && !_isFirstPersonLook)
+                {
+                    SnapCameraBehindMario();
+                }
+            }
+        }
+
+        if (Mathf.Abs(Mathf.DeltaAngle(yawBefore, _cameraYaw)) > 0.4f)
+        {
+            RecordMoveStat("FreeCameraOrbit");
+        }
+
+        if (_manualOrbitCooldown > 0f)
+        {
+            _manualOrbitCooldown -= dt;
+        }
+
+        if (_isSnappingCamera)
+        {
+            _cameraYaw = Mathf.LerpAngle(_cameraYaw, _snapTargetYaw, 1f - Mathf.Exp(-14f * dt));
+            _cameraPitch = Mathf.Lerp(_cameraPitch, 18f, 1f - Mathf.Exp(-12f * dt));
+            if (Mathf.Abs(Mathf.DeltaAngle(_cameraYaw, _snapTargetYaw)) < 0.8f) _isSnappingCamera = false;
+        }
+        else if (playing && !_isFirstPersonLook && _manualOrbitCooldown <= 0f && autoFollowYawStrength > 0.01f)
+        {
+            var camRight = Quaternion.Euler(0f, _cameraYaw, 0f) * Vector3.right;
+            var lateralSpeed = Vector3.Dot(_planarVelocity, camRight);
+            if (Mathf.Abs(lateralSpeed) > 1.8f)
+            {
+                _cameraYaw += (lateralSpeed / maxRunSpeed) * (autoFollowYawStrength * 42f) * dt;
+            }
+        }
+
+        // Smooth Odyssey Height Cushioning on CameraYawProxy (prevents horizon bob on hops!)
+        float targetY = transform.position.y + (_isFirstPersonLook ? 1.12f : (_cc.isGrounded ? 1.12f : 1.02f));
+        float yTrackSpeed = _cc.isGrounded ? 14f : (_verticalVelocity < -5f ? 18f : 7.5f);
+        _smoothedCamY = Mathf.Lerp(_smoothedCamY, targetY, 1f - Mathf.Exp(-yTrackSpeed * dt));
+        if (cameraYawProxy != null)
+        {
+            var nextProxyPos = new Vector3(transform.position.x, _smoothedCamY, transform.position.z);
+            if ((cameraYawProxy.position - nextProxyPos).sqrMagnitude > 36f && _cmCam != null)
+            {
+                _cmCam.PreviousStateIsValid = false;
+            }
+            cameraYawProxy.position = nextProxyPos;
+        }
+
         if (_cmFollow != null)
         {
-            _cmFollow.CameraDistance = Mathf.Lerp(_cmFollow.CameraDistance, cameraDistance, 1f - Mathf.Exp(-10f * unscaledDt));
+            if (_isFirstPersonLook)
+            {
+                _cmFollow.CameraDistance = Mathf.Lerp(_cmFollow.CameraDistance, 0.08f, 18f * dt);
+                _cmFollow.ShoulderOffset = Vector3.Lerp(_cmFollow.ShoulderOffset, new Vector3(0f, 0.34f, 0.16f), 18f * dt);
+            }
+            else
+            {
+                float spinBoost = IsSpinningBowser ? 2.4f : 0f;
+                float speedZoom = Mathf.Clamp01(_planarVelocity.magnitude / maxRunSpeed) * 0.55f;
+                _cmFollow.CameraDistance = Mathf.Lerp(_cmFollow.CameraDistance, cameraDistance + spinBoost + speedZoom, 10f * dt);
+                _cmFollow.ShoulderOffset = Vector3.Lerp(_cmFollow.ShoulderOffset, new Vector3(0f, 0.44f, 0f), 12f * dt);
+            }
         }
+
+        if (_cmCam != null)
+        {
+            var speedRatio = Mathf.Clamp01(_planarVelocity.magnitude / (maxRunSpeed * 1.4f));
+            var targetFov = _isFirstPersonLook
+                ? (_baseCameraFov - 8f)
+                : (_baseCameraFov + speedRatio * 5.5f + (_isDiving || _isLongJumping || _isRolling ? 4.5f : 0f) + (IsSpinningBowser ? 5f : 0f));
+            var lens = _cmCam.Lens;
+            lens.FieldOfView = Mathf.Lerp(lens.FieldOfView, targetFov, 9f * dt);
+            _cmCam.Lens = lens;
+        }
+
+        ApplyProxyRotationImmediate();
+    }
+
+    private void ToggleCursorLockMode(bool lockCursor)
+    {
+        _cursorLockedMode = lockCursor;
+        Cursor.lockState = lockCursor ? CursorLockMode.Locked : CursorLockMode.None;
+        Cursor.visible = !lockCursor;
     }
 
     private void SnapCameraBehindMario()
     {
-        _cameraYaw = transform.eulerAngles.y;
-        _cameraPitch = 16f;
-        _manualOrbitCooldown = 0.6f;
-        if (GameAudio.Instance != null) GameAudio.Instance.PlayUIClick();
+        _snapTargetYaw = transform.eulerAngles.y;
+        _isSnappingCamera = true;
+        _manualOrbitCooldown = 0.8f;
     }
 
-    private void ApplyMovingPlatformDelta()
+    private void ApplyProxyRotationImmediate()
     {
-        var plat = _activePlatform;
-        if (plat == null || !plat.gameObject.activeInHierarchy)
+        if (cameraYawProxy != null)
         {
-            _activePlatform = null;
-            return;
-        }
-
-        var worldDelta = plat.position - _lastPlatformWorldPos;
-        var rotDelta = plat.rotation * Quaternion.Inverse(_lastPlatformWorldRot);
-
-        if (rotDelta != Quaternion.identity)
-        {
-            var offset = transform.position - plat.position;
-            worldDelta += (rotDelta * offset) - offset;
-            var yawDelta = rotDelta.eulerAngles.y;
-            if (Mathf.Abs(yawDelta) > 0.001f)
-            {
-                transform.Rotate(0f, yawDelta, 0f, Space.World);
-            }
-        }
-
-        if (worldDelta.sqrMagnitude is > 0.000001f and < 4f)
-        {
-            _cc.Move(worldDelta);
-        }
-
-        if (_activePlatform != null)
-        {
-            _lastPlatformWorldPos = _activePlatform.position;
-            _lastPlatformWorldRot = _activePlatform.rotation;
+            cameraYawProxy.rotation = Quaternion.Euler(_cameraPitch, _cameraYaw, 0f);
         }
     }
 
-    private void UpdatePlanarMovement(Vector2 moveInput, bool isGrounded, float dt)
+    // -------------------------------------------------------------------------
+    // JUMP & ACROBATICS
+    // -------------------------------------------------------------------------
+    private void ExecuteJump(Vector3 moveInputDir)
     {
-        // Use Lakitu Camera Yaw for crisp camera-relative movement
-        var camYawRot = Quaternion.Euler(0f, _cameraYaw, 0f);
-        if (Camera.main != null)
+        _isDiving = false;
+        _isBellySliding = false;
+        _isSlideKicking = false;
+        _isBackflipping = false;
+        _isSideFlipping = false;
+        _isLongJumping = false;
+        _isRolling = false;
+        _isSlopeSliding = false;
+        _isCrouching = false;
+        _attackComboStage = 0;
+        _jumpCutApplied = false;
+
+        var planarSpeed = _planarVelocity.magnitude;
+
+        // 1. Long Jump (Crouch held while moving > 2.2 m/s)
+        if (_carriedObject == null && ReadCrouchHeld() && planarSpeed > 2.2f)
         {
-            var fwd = Camera.main.transform.forward;
-            fwd.y = 0f;
-            if (fwd.sqrMagnitude > 0.01f)
-            {
-                camYawRot = Quaternion.LookRotation(fwd.normalized, Vector3.up);
-            }
-        }
+            JumpComboStage = 1;
+            _isLongJumping = true;
+            _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * longJumpHeight);
+            var jumpDir = moveInputDir.sqrMagnitude > 0.05f ? moveInputDir : transform.forward;
+            _planarVelocity = jumpDir * (maxRunSpeed * longJumpSpeedMultiplier);
+            transform.rotation = Quaternion.LookRotation(jumpDir, Vector3.up);
 
-        var desiredDir = (camYawRot * new Vector3(moveInput.x, 0f, moveInput.y));
-        if (desiredDir.sqrMagnitude > 1f) desiredDir.Normalize();
-
-        // Detect 180° sudden stick reversal for Side Somersault!
-        if (isGrounded && _planarVelocity.magnitude > maxRunSpeed * 0.48f && desiredDir.sqrMagnitude > 0.25f)
-        {
-            var dot = Vector3.Dot(desiredDir.normalized, _lastRunDirection);
-            if (dot < -0.55f)
-            {
-                _skidReversalTimer = 0.28f;
-            }
-        }
-
-        if (_planarVelocity.magnitude > maxRunSpeed * 0.45f)
-        {
-            _lastRunDirection = _planarVelocity.normalized;
-        }
-
-        // Belly Slide friction on ground
-        if (_isBellySliding)
-        {
-            _planarVelocity = Vector3.MoveTowards(_planarVelocity, desiredDir * 2.5f, 11f * dt);
-            if (_planarVelocity.magnitude < 1.8f)
-            {
-                _isBellySliding = false;
-            }
-            return;
-        }
-
-        // Attack lunge deceleration
-        if (_attackComboStage is >= 1 and <= 3 && isGrounded)
-        {
-            _planarVelocity = Vector3.MoveTowards(_planarVelocity, Vector3.zero, deceleration * 1.4f * dt);
-            return;
-        }
-
-        var targetMaxSpeed = _isCrouching ? crawlSpeed : maxRunSpeed;
-        var targetVel = desiredDir * targetMaxSpeed;
-        var rate = isGrounded
-            ? (desiredDir.sqrMagnitude > 0.01f ? acceleration : deceleration)
-            : airControl;
-
-        if (!_isDiving && !_isLongJumping)
-        {
-            _planarVelocity = Vector3.MoveTowards(_planarVelocity, targetVel, rate * dt);
-        }
-        else if (_isLongJumping && !isGrounded)
-        {
-            // Slight air steering during Long Jump
-            _planarVelocity = Vector3.MoveTowards(_planarVelocity, _planarVelocity.normalized * (maxRunSpeed * longJumpSpeedMultiplier) + desiredDir * 2.2f, airControl * 0.45f * dt);
-        }
-
-        if (!(_planarVelocity.sqrMagnitude > 0.15f)) return;
-        var targetRot = Quaternion.LookRotation(_planarVelocity.normalized, Vector3.up);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-turnSmoothSpeed * dt));
-    }
-
-    private void UpdateWaterAndOxygenState(
-        Vector2 moveInput,
-        bool jumpPressed,
-        bool attackPressed,
-        bool divePressed,
-        bool crouchHeld,
-        float dt)
-    {
-        if (!hasWaterInCourse)
-        {
-            IsSwimming = false;
-            currentOxygenSeconds = maxOxygenSeconds;
-            return;
-        }
-
-        var pos = transform.position;
-        var inHorizontalLagoon = pos.x >= waterBoundsX.x && pos.x <= waterBoundsX.y &&
-                                 pos.z >= waterBoundsZ.x && pos.z <= waterBoundsZ.y;
-        var belowWaterSurface = inHorizontalLagoon && pos.y < (waterSurfaceY - 0.35f);
-
-        // Metal Mario (Act 6) walks heavy on the ocean floor & does not lose oxygen!
-        if (JollyRogerBayController.IsMetalMarioActive)
-        {
-            IsSwimming = false;
-            currentOxygenSeconds = Mathf.MoveTowards(currentOxygenSeconds, maxOxygenSeconds, dt * 8f);
-            return;
-        }
-
-        if (belowWaterSurface)
-        {
-            // Deplete Oxygen while submerged (1 wedge per 4s -> 32s total air)
-            if (pos.y < waterSurfaceY - 0.85f)
-            {
-                currentOxygenSeconds -= dt;
-                if (currentOxygenSeconds <= 0f)
-                {
-                    currentOxygenSeconds = 0f;
-                    if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
-                    ResetToSpawn();
-                    return;
-                }
-            }
-            else
-            {
-                // At water surface: rapidly gasp & refill Oxygen!
-                currentOxygenSeconds = Mathf.MoveTowards(currentOxygenSeconds, maxOxygenSeconds, dt * 10f);
-            }
-
-            if (!IsSwimming)
-            {
-                IsSwimming = true;
-                _isDiving = false;
-                _isBellySliding = false;
-                _isGroundPounding = false;
-                _isBackflipping = false;
-                _isSideFlipping = false;
-                _isLongJumping = false;
-                _verticalVelocity = Mathf.Max(_verticalVelocity * 0.35f, -3.5f);
-                if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
-            }
-
-            // 3D Underwater Swimming Controls (SM64 style):
-            // - WASD / Left Stick steers Mario relative to Lakitu Camera Yaw
-            // - Space (Jump) = Breaststroke Kick + Ascend toward surface!
-            // - C / Ctrl / Shift (Crouch) = Dive deeper toward ocean floor!
-            // - Left Click / J / E = Fast Flutter Kick forward thrust!
-            var camYawRot = Quaternion.Euler(0f, _cameraYaw, 0f);
-            var desiredPlanarDir = camYawRot * new Vector3(moveInput.x, 0f, moveInput.y);
-            if (desiredPlanarDir.sqrMagnitude > 1f) desiredPlanarDir.Normalize();
-
-            var targetSwimSpeed = (attackPressed || divePressed) ? swimFlutterSpeed : swimStrokeSpeed;
-            if (jumpPressed)
-            {
-                targetSwimSpeed = swimFlutterSpeed;
-                _verticalVelocity = 5.4f; // Breaststroke upward surge!
-                if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(1);
-                if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
-
-                // Dolphin Jump out of the water if near surface!
-                if (pos.y >= waterSurfaceY - 1.15f)
-                {
-                    IsSwimming = false;
-                    _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * doubleJumpHeight);
-                    JumpComboStage = 2;
-                    if (motion != null) motion.TriggerJumpStretch(2);
-                    return;
-                }
-            }
-            else if (crouchHeld)
-            {
-                // Dive deeper toward the trench floor!
-                _verticalVelocity = Mathf.MoveTowards(_verticalVelocity, -6.2f, 18f * dt);
-            }
-            else if (Keyboard.current != null && Keyboard.current.spaceKey.isPressed)
-            {
-                // Hold Space to glide smoothly upward
-                _verticalVelocity = Mathf.MoveTowards(_verticalVelocity, 4.5f, 14f * dt);
-            }
-            else
-            {
-                // Gentle neutral buoyancy drag
-                _verticalVelocity = Mathf.MoveTowards(_verticalVelocity, -0.65f, 6.5f * dt);
-            }
-
-            if (attackPressed || divePressed)
-            {
-                _planarVelocity = transform.forward * swimFlutterSpeed;
-                if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
-            }
-            else
-            {
-                _planarVelocity = Vector3.MoveTowards(_planarVelocity, desiredPlanarDir * targetSwimSpeed, 14f * dt);
-            }
-
-            _swimPitch = Mathf.Clamp(-_verticalVelocity * 5.5f, -35f, 35f);
-
-            if (desiredPlanarDir.sqrMagnitude > 0.05f)
-            {
-                var swimLook = Quaternion.LookRotation(desiredPlanarDir.normalized, Vector3.up);
-                transform.rotation = Quaternion.Slerp(transform.rotation, swimLook, 1f - Mathf.Exp(-10f * dt));
-            }
-        }
-        else
-        {
-            IsSwimming = false;
-            currentOxygenSeconds = Mathf.MoveTowards(currentOxygenSeconds, maxOxygenSeconds, dt * 12f);
-        }
-    }
-
-    private void HandleJumpAndAcrobatics(
-        bool isGrounded,
-        bool attackPressed,
-        bool divePressed,
-        bool groundPoundPressed)
-    {
-        var canCoyoteJump = (Time.time - _lastGroundedTime) <= coyoteTimeSeconds;
-        var hasBufferedJump = (Time.time - _lastJumpPressedTime) <= jumpBufferSeconds;
-
-        // 0. Dive Rollout! (Press Jump or Attack while Belly Sliding on ground -> front flip recovery!)
-        if (isGrounded && _isBellySliding && (hasBufferedJump || attackPressed))
-        {
-            _lastJumpPressedTime = -10f;
-            _isBellySliding = false;
-            _isDiving = false;
-            JumpComboStage = 2;
-            _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * (singleJumpHeight * 0.9f));
-            _planarVelocity = transform.forward * Mathf.Max(_planarVelocity.magnitude, maxRunSpeed * 0.95f);
+            RecordMoveStat("LongJump");
             if (motion != null) motion.TriggerJumpStretch(2);
             if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
             if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
             return;
         }
 
-        // 1. Ground / Coyote Jump Arsenal:
-        //    - Long Jump (Crouch + moving + Jump)
-        //    - Backflip (Crouch + stationary/slow + Jump)
-        //    - Side Somersault (180° Skid Reversal + Jump)
-        //    - Ground-Pound Boost Jump (Jump immediately after Ground Pound impact)
-        //    - 3-Stage Combo Jump (Single -> Double -> Triple Somersault!)
-        if (canCoyoteJump && hasBufferedJump && _verticalVelocity <= 0.5f)
+        // 2. Backflip (Crouch held while stationary/slow)
+        if (_carriedObject == null && ReadCrouchHeld())
         {
-            _lastJumpPressedTime = -10f;
-            _lastGroundedTime = -10f;
-            _activePlatform = null;
-            _isDiving = false;
-            _isBellySliding = false;
-            _isBackflipping = false;
-            _isSideFlipping = false;
-            _isLongJumping = false;
+            JumpComboStage = 1;
+            _isBackflipping = true;
+            _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * backflipHeight);
+            _planarVelocity = -transform.forward * 2.9f;
 
-            var speed = _planarVelocity.magnitude;
-
-            if (_isCrouching && speed > 2.2f)
-            {
-                // LONG JUMP! ("Yahoo!")
-                _isLongJumping = true;
-                _isCrouching = false;
-                JumpComboStage = 2;
-                _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * longJumpHeight);
-                _planarVelocity = transform.forward * (maxRunSpeed * longJumpSpeedMultiplier);
-            }
-            else if (_isCrouching && speed <= 2.2f)
-            {
-                // BACKFLIP! (High vertical reverse somersault!)
-                _isBackflipping = true;
-                _isCrouching = false;
-                JumpComboStage = 3;
-                _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * backflipHeight);
-                _planarVelocity = -transform.forward * (maxRunSpeed * 0.42f);
-            }
-            else if (_skidReversalTimer > 0f)
-            {
-                // SIDE SOMERSAULT! (180° reversal twist + high flip!)
-                _isSideFlipping = true;
-                _skidReversalTimer = 0f;
-                JumpComboStage = 3;
-                _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * sideFlipHeight);
-                var revDir = -_lastRunDirection;
-                revDir.y = 0f;
-                if (revDir.sqrMagnitude > 0.01f)
-                {
-                    revDir.Normalize();
-                    transform.rotation = Quaternion.LookRotation(revDir, Vector3.up);
-                    _planarVelocity = revDir * (maxRunSpeed * 0.65f);
-                }
-            }
-            else if (_groundPoundImpactTimer > 0f)
-            {
-                // GROUND POUND BOOST JUMP!
-                _groundPoundImpactTimer = 0f;
-                _isBackflipping = true;
-                JumpComboStage = 3;
-                _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * doubleJumpHeight * 1.15f);
-            }
-            else
-            {
-                // 3-STAGE COMBO JUMP (Single -> Double -> Triple Front-Flip!)
-                if (_landedTimer <= comboWindowSeconds && JumpComboStage == 1)
-                {
-                    JumpComboStage = 2;
-                }
-                else if (_landedTimer <= comboWindowSeconds && JumpComboStage == 2 && speed > maxRunSpeed * 0.42f)
-                {
-                    JumpComboStage = 3;
-                }
-                else
-                {
-                    JumpComboStage = 1;
-                }
-
-                var h = JumpComboStage == 3 ? tripleJumpHeight
-                    : (JumpComboStage == 2 ? doubleJumpHeight : singleJumpHeight);
-
-                _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * h);
-                if (JumpComboStage == 3)
-                {
-                    _planarVelocity = transform.forward * Mathf.Max(speed, maxRunSpeed * 1.18f);
-                }
-            }
-
-            if (motion != null) motion.TriggerJumpStretch(JumpComboStage);
-            if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(JumpComboStage);
+            RecordMoveStat("Backflip");
+            if (motion != null) motion.TriggerJumpStretch(3);
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(3);
             if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
             return;
         }
 
-        switch (isGrounded)
+        // 3. Side Somersault (Jump during skid reversal window!)
+        if (_carriedObject == null && _skidReversalTimer > 0f && moveInputDir.sqrMagnitude > 0.05f)
         {
-            // 2. Ground Attack: 3-Hit Punch-Punch-Kick OR High-Speed Dive!
-            case true when !_isBellySliding && (attackPressed || divePressed):
-            {
-                if (divePressed || (_planarVelocity.magnitude > maxRunSpeed * 0.72f && _attackComboStage == 0))
-                {
-                    // Launch into a forward Dive!
-                    TriggerForwardDive();
-                    return;
-                }
+            JumpComboStage = 1;
+            _isSideFlipping = true;
+            _skidReversalTimer = 0f;
+            _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * sideFlipHeight);
+            _planarVelocity = moveInputDir * 5.6f;
+            transform.rotation = Quaternion.LookRotation(moveInputDir, Vector3.up);
 
-                TriggerGroundPunchKickCombo();
-                return;
-            }
-            // 3. Mid-Air Actions: Wall Kick, Air Dive, Air Jump Kick, Ground Pound
-            // 3A. Wall Kick!
-            case false when hasBufferedJump && (Time.time - _lastWallTouchTime) <= 0.25f && _lastWallNormal.sqrMagnitude > 0.1f:
-            {
-                _lastJumpPressedTime = -10f;
-                _lastWallTouchTime = -10f;
-                _isDiving = false;
-                _isWallSliding = false;
-                _isBackflipping = false;
-                _isSideFlipping = false;
-                _isLongJumping = false;
-                JumpComboStage = 2;
-
-                var kickDir = (_lastWallNormal + Vector3.up * 0.15f).normalized;
-                kickDir.y = 0f;
-                if (kickDir.sqrMagnitude > 0.01f)
-                {
-                    kickDir.Normalize();
-                    transform.rotation = Quaternion.LookRotation(kickDir, Vector3.up);
-                    _planarVelocity = kickDir * (maxRunSpeed * 1.05f);
-                }
-                _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * doubleJumpHeight);
-                if (motion != null) motion.TriggerJumpStretch(2);
-                if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
-                if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
-                return;
-            }
-            // 3B. Air Dive vs Air Jump Kick!
-            case false when !_isDiving && !_isGroundPounding && (divePressed || attackPressed):
-            {
-                if (divePressed || _planarVelocity.magnitude > maxRunSpeed * 0.62f)
-                {
-                    TriggerForwardDive();
-                }
-                else
-                {
-                    // SM64 Air Jump Kick! ("Hoo!" with slight upward hover pop!)
-                    _attackComboStage = 4;
-                    _attackDuration = 0.34f;
-                    _attackTimer = _attackDuration;
-                    _attackHitRegistered = false;
-                    _verticalVelocity = Mathf.Max(_verticalVelocity, 6.2f);
-                    _planarVelocity += transform.forward * 2.5f;
-                    if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(1);
-                }
-                return;
-            }
-            // 3C. Ground Pound in mid-air!
-            case false:
-            {
-                if (!_isGroundPounding && groundPoundPressed && _verticalVelocity < 5.5f)
-                {
-                    _isGroundPounding = true;
-                    _isDiving = false;
-                    _isBackflipping = false;
-                    _isSideFlipping = false;
-                    _isLongJumping = false;
-                    _groundPoundStallTimer = 0.18f;
-                    _planarVelocity = Vector3.zero;
-                    _verticalVelocity = 0f;
-                    if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
-                }
-
-                break;
-            }
+            RecordMoveStat("SideFlip");
+            if (motion != null) motion.TriggerJumpStretch(3);
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(3);
+            if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
+            return;
         }
-    }
 
-    private void TriggerForwardDive()
-    {
-        _isDiving = true;
-        _isCrouching = false;
-        _isBackflipping = false;
-        _isSideFlipping = false;
-        _isLongJumping = false;
-        _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * 1.35f);
-        _planarVelocity = transform.forward * (maxRunSpeed * 1.42f);
-        if (motion != null) motion.TriggerJumpStretch(2);
-        if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
+        // 4. Ground-Pound Impact Boost Jump!
+        if (_carriedObject == null && _groundPoundImpactTimer > 0f)
+        {
+            _groundPoundImpactTimer = 0f;
+            JumpComboStage = 2;
+            _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * 3.15f);
+            RecordMoveStat("DoubleJump");
+            if (motion != null) motion.TriggerJumpStretch(2);
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
+            if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
+            return;
+        }
+
+        // 5. Classic Single -> Double -> Triple Somersault Progression
+        if (_carriedObject == null && _landedTimer <= comboWindowSeconds && JumpComboStage > 0)
+        {
+            JumpComboStage = (JumpComboStage == 2 && planarSpeed > 4.2f) ? 3 : 2;
+        }
+        else
+        {
+            JumpComboStage = 1;
+        }
+
+        var jumpH = JumpComboStage switch
+        {
+            3 => tripleJumpHeight,
+            2 => doubleJumpHeight,
+            _ => singleJumpHeight
+        };
+        _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * jumpH);
+
+        if (JumpComboStage == 3) RecordMoveStat("TripleJump");
+        else if (JumpComboStage == 2) RecordMoveStat("DoubleJump");
+        else RecordMoveStat("SingleJump");
+
+        if (JumpComboStage == 3 && moveInputDir.sqrMagnitude > 0.05f)
+        {
+            _planarVelocity = Vector3.Max(_planarVelocity, moveInputDir * (maxRunSpeed * 1.12f));
+        }
+
+        if (motion != null) motion.TriggerJumpStretch(JumpComboStage);
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(JumpComboStage);
         if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
     }
 
-    private void TriggerGroundPunchKickCombo()
+    private void ExecuteWallKick()
     {
-        if (_attackComboStage == 0 || _attackChainWindowTimer <= 0f)
-        {
-            _attackComboStage = 1; // 1. Left Punch ("Yah!")
-            _attackDuration = 0.22f;
-        }
-        else switch (_attackComboStage)
-        {
-            case 1 when _attackTimer <= 0.12f:
-                _attackComboStage = 2; // 2. Right Punch ("Wah!")
-                _attackDuration = 0.24f;
-                break;
-            case 2 when _attackTimer <= 0.14f:
-                _attackComboStage = 3; // 3. Heavy Roundhouse Kick! ("Hoo!")
-                _attackDuration = 0.34f;
-                _verticalVelocity = 6.5f; // Leaping kick pop!
-                break;
-            default:
-                return;
-        }
+        var kickOut = _lastWallNormal;
+        kickOut.y = 0f;
+        if (kickOut.sqrMagnitude < 0.01f) kickOut = -transform.forward;
+        kickOut.Normalize();
 
-        _attackTimer = _attackDuration;
-        _attackChainWindowTimer = 0.48f;
-        _attackHitRegistered = false;
-        _planarVelocity = transform.forward * (_attackComboStage == 3 ? 6.5f : 3.2f);
-        if (motion != null) motion.TriggerJumpStretch(_attackComboStage);
-        if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(_attackComboStage);
+        _isDiving = false;
+        _isBackflipping = false;
+        _isSideFlipping = false;
+        _isLongJumping = false;
+        _isWallSliding = false;
+        _isRolling = false;
+        _jumpCutApplied = false;
+        JumpComboStage = 2;
+
+        _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * 3.05f);
+        _planarVelocity = kickOut * 9.0f;
+        _wallKickSteerLockTimer = 0.16f;
+        _wallKickSteerDir = kickOut;
+        transform.rotation = Quaternion.LookRotation(kickOut, Vector3.up);
+        _lastWallTouchTime = -10f;
+
+        RecordMoveStat("WallKick");
+        if (motion != null) motion.TriggerJumpStretch(2);
+        if (GameAudio.Instance != null)
+        {
+            GameAudio.Instance.PlayWallKickSound();
+            GameAudio.Instance.PlayJumpSound(2);
+        }
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position + Vector3.up * 0.7f);
     }
 
-    private void UpdateAttackCombo(float dt)
+    private void LaunchDive(Vector3 dir, float bonusUpVel, float speedBoost)
     {
-        if (_attackComboStage == 0) return;
+        _isDiving = true;
+        _isBellySliding = false;
+        _isSlideKicking = false;
+        _isBackflipping = false;
+        _isSideFlipping = false;
+        _isLongJumping = false;
+        _isRolling = false;
+        _isSlopeSliding = false;
+        _attackComboStage = 0;
+        _jumpCutApplied = true;
 
-        _attackTimer -= dt;
-        if (!_attackHitRegistered && _attackTimer <= _attackDuration * 0.65f)
+        var diveDir = dir.sqrMagnitude > 0.05f ? dir.normalized : transform.forward;
+        _planarVelocity = diveDir * Mathf.Max(_planarVelocity.magnitude, speedBoost);
+        _verticalVelocity = Mathf.Max(_verticalVelocity, bonusUpVel);
+        transform.rotation = Quaternion.LookRotation(diveDir, Vector3.up);
+
+        RecordMoveStat("DiveBellySlide");
+        if (motion != null) motion.TriggerJumpStretch(1);
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position + Vector3.up * 0.35f);
+
+        CheckMeleeHitbox(transform.position + diveDir * 0.9f + Vector3.up * 0.7f, 1.35f);
+    }
+
+    private void StartGroundPound()
+    {
+        _isGroundPounding = true;
+        _isDiving = false;
+        _isBellySliding = false;
+        _isSlideKicking = false;
+        _isBackflipping = false;
+        _isSideFlipping = false;
+        _isLongJumping = false;
+        _isRolling = false;
+        _isSpinAttacking = false;
+        _attackComboStage = 0;
+        _groundPoundStallTimer = 0.22f;
+        _planarVelocity = Vector3.zero;
+        _verticalVelocity = 0f;
+
+        RecordMoveStat("GroundPound");
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(1);
+    }
+
+    private void UpdateGroundPoundPhysics(float dt)
+    {
+        _planarVelocity = Vector3.zero;
+        if (_groundPoundStallTimer > 0f)
         {
+            _groundPoundStallTimer -= dt;
+            _verticalVelocity = 0f;
+        }
+        else
+        {
+            _verticalVelocity = -27.5f;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // COMBAT: 3-HIT PUNCH/KICK, SWEEP KICK, SLIDE KICK & BOWSER TAIL GRAB
+    // -------------------------------------------------------------------------
+    private void TriggerMarioAttack(bool grounded, Vector3 moveDir)
+    {
+        // 0. If carrying an object, Throw it crisply!
+        if (_carriedObject != null)
+        {
+            var throwDir = moveDir.sqrMagnitude > 0.05f ? moveDir : transform.forward;
+            throwDir.y = 0f;
+            if (throwDir.sqrMagnitude < 0.001f) throwDir = transform.forward;
+            throwDir.Normalize();
+            transform.rotation = Quaternion.LookRotation(throwDir, Vector3.up);
+            _carriedObject.ThrowForward(transform.position + throwDir * 0.95f + Vector3.up * 1.25f, throwDir);
+            _carriedObject = null;
+            _attackComboStage = 8;
+            _attackDuration = 0.28f;
+            _attackTimer = 0.28f;
             _attackHitRegistered = true;
-            CheckMeleeHitbox(transform.position + transform.forward * 1.15f + Vector3.up * 0.7f, 1.85f);
+            RecordMoveStat("CarryThrow");
+            return;
         }
 
-        if (!(_attackTimer <= 0f)) return;
-        if (_attackChainWindowTimer <= 0f || _attackComboStage >= 3)
+        // 1. Highest priority: check if behind Bowser to grab his Tail!
+        if (TryGrabNearbyBowserTail()) return;
+
+        if (grounded)
+        {
+            // 1b. Check SM64 Carriable Object pickup in front of Mario (Crate, Throwable Bob-omb, Rock)!
+            if (!_isCrouching && _attackComboStage == 0 && TryPickUpNearbyCarriable())
+            {
+                return;
+            }
+
+            if (_isCrouching)
+            {
+                if (_planarVelocity.magnitude > 2.8f)
+                {
+                    // Slide Kick!
+                    _isSlideKicking = true;
+                    _isBellySliding = true;
+                    _planarVelocity = (moveDir.sqrMagnitude > 0.05f ? moveDir : transform.forward) * 10.8f;
+                    transform.rotation = Quaternion.LookRotation(_planarVelocity.normalized, Vector3.up);
+                    _attackComboStage = 6;
+                    _attackTimer = 0.42f;
+                    _attackDuration = 0.42f;
+                    _attackHitRegistered = false;
+                    RecordMoveStat("SlideKick");
+                    if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
+                    return;
+                }
+                else
+                {
+                    // Stationary Crouch + Attack -> Sweep Kick!
+                    _attackComboStage = 5;
+                    _attackTimer = 0.34f;
+                    _attackDuration = 0.34f;
+                    _attackHitRegistered = false;
+                    RecordMoveStat("PunchKickCombo");
+                    if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(1);
+                    return;
+                }
+            }
+
+            // 3-Hit Punch -> Punch -> Roundhouse Kick!
+            _attackComboStage = (_attackChainWindowTimer > 0f && _attackComboStage > 0 && _attackComboStage < 3)
+                ? _attackComboStage + 1
+                : 1;
+            _attackDuration = _attackComboStage == 3 ? 0.32f : 0.24f;
+            _attackTimer = _attackDuration;
+            _attackChainWindowTimer = 0.42f;
+            _attackHitRegistered = false;
+
+            var lungeDir = moveDir.sqrMagnitude > 0.05f ? moveDir : transform.forward;
+            _planarVelocity = lungeDir * (_attackComboStage == 3 ? 6.8f : 4.2f);
+            transform.rotation = Quaternion.LookRotation(lungeDir, Vector3.up);
+            if (_attackComboStage == 3) _verticalVelocity = Mathf.Max(_verticalVelocity, 3.2f);
+
+            if (_attackComboStage >= 2) RecordMoveStat("PunchKickCombo");
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(_attackComboStage);
+        }
+        else
+        {
+            // Air Jump Kick
+            _attackComboStage = 4;
+            _attackDuration = 0.34f;
+            _attackTimer = 0.34f;
+            _attackHitRegistered = false;
+            _verticalVelocity = Mathf.Max(_verticalVelocity, 3.8f);
+            if (moveDir.sqrMagnitude > 0.05f)
+            {
+                _planarVelocity = moveDir * Mathf.Max(_planarVelocity.magnitude, 6.2f);
+                transform.rotation = Quaternion.LookRotation(moveDir, Vector3.up);
+            }
+            RecordMoveStat("AirKick");
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(2);
+        }
+    }
+
+    private bool TryGrabNearbyBowserTail()
+    {
+        foreach (var bowser in FindObjectsByType<BowserBossController>(FindObjectsInactive.Exclude))
+        {
+            if (bowser == null || !bowser.gameObject.activeInHierarchy) continue;
+            if (bowser.TryGrabTail(this))
+            {
+                _spinningBowser = bowser;
+                _planarVelocity = Vector3.zero;
+                _verticalVelocity = 0f;
+                _isDiving = false;
+                _isBellySliding = false;
+                _isSlideKicking = false;
+                _isRolling = false;
+                _isSpinAttacking = false;
+                _attackComboStage = 0;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void UpdateAttackState(float dt)
+    {
+        if (_attackChainWindowTimer > 0f) _attackChainWindowTimer -= dt;
+        if (_attackComboStage <= 0) return;
+
+        _attackTimer -= dt;
+        if (!_attackHitRegistered && _attackTimer <= _attackDuration * 0.72f)
+        {
+            _attackHitRegistered = true;
+            var radius = _attackComboStage == 5 || _attackComboStage == 7 ? 2.1f : (_attackComboStage >= 3 ? 1.65f : 1.45f);
+            var hitCenter = (_attackComboStage == 5 || _attackComboStage == 7)
+                ? transform.position + Vector3.up * 0.45f
+                : transform.position + transform.forward * 1.05f + Vector3.up * 0.75f;
+            CheckMeleeHitbox(hitCenter, radius);
+        }
+
+        if (_attackTimer <= 0f)
         {
             _attackComboStage = 0;
+            _isSlideKicking = false;
         }
     }
 
     private void CheckMeleeHitbox(Vector3 center, float radius)
     {
-        var cols = Physics.OverlapSphere(center, radius);
-        foreach (var col in cols)
-        {
-            if (col == null || col.gameObject == gameObject) continue;
+        // Try Bowser Tail Grab even at Dive/Slide apex if behind Bowser!
+        TryGrabNearbyBowserTail();
 
-            var bob = col.GetComponentInParent<BobOmbPatrol>();
-            if (bob != null)
+        var hits = Physics.OverlapSphere(center, radius);
+        foreach (var col in hits)
+        {
+            if (col == null) continue;
+
+            var crate = col.GetComponentInParent<DestructibleCrate>();
+            if (crate != null)
             {
-                bob.OnMarioAttackHit();
+                crate.Smash(center);
+                continue;
+            }
+
+            var goomba = col.GetComponentInParent<GoombaPatrol>();
+            if (goomba != null)
+            {
+                goomba.OnAttacked();
+                continue;
+            }
+
+            var bobomb = col.GetComponentInParent<BobOmbPatrol>();
+            if (bobomb != null)
+            {
+                bobomb.OnMarioAttackHit();
+                continue;
             }
 
             var bfElem = col.GetComponentInParent<BobOmbBattlefieldController>();
             if (bfElem != null)
             {
                 bfElem.RegisterHitOnElement();
+                continue;
             }
 
             var whomp = col.GetComponentInParent<WhompBossController>();
-            if (whomp != null)
+            if (whomp != null && IsGroundPoundingActive)
             {
                 whomp.ForceGroundPoundHitFromMario();
+                continue;
             }
 
-            var wfElem = col.GetComponentInParent<WhompFortressElement>();
-            if (wfElem != null && wfElem.hazardType == Mario64Remake.FortressHazardType.KickableBoard)
+            var elem = col.GetComponentInParent<WhompFortressElement>();
+            if (elem != null)
             {
-                wfElem.KnockDownImmediate();
+                if (elem.hazardType == FortressHazardType.KickableBoard)
+                    elem.KnockDownImmediate();
+                else if (elem.hazardType == FortressHazardType.BreakawayBrickWall)
+                    elem.ShatterBreakawayWall();
+                else if (elem.hazardType == FortressHazardType.SleepingPiranha)
+                    elem.DefeatSleepingPiranha();
+                continue;
             }
 
             var jrbElem = col.GetComponentInParent<JollyRogerBayController>();
-            if (jrbElem != null && jrbElem.elementType == Mario64Remake.JollyRogerElementType.TreasureChestPuzzleMember)
+            if (jrbElem != null && jrbElem.elementType == JollyRogerElementType.TreasureChestPuzzleMember)
             {
                 jrbElem.InteractWithChest(this);
+                continue;
+            }
+
+            var dwElem = col.GetComponentInParent<BowserDarkWorldElement>();
+            if (dwElem != null && dwElem.hazardType == DarkWorldHazardType.PurpleSwitchCrystal)
+            {
+                dwElem.ActivateSwitch();
             }
         }
     }
 
-    private void OnLanded()
+    private void UpdatePlanarLocomotion(bool grounded, Vector2 rawInput, Vector3 moveInputDir, float moveMagnitude, float dt)
     {
-        var wasHeavy = _isGroundPounding || JumpComboStage == 3 || _isBackflipping || _isSideFlipping;
+        if (_isRolling)
+        {
+            // Sustain high-speed Odyssey Roll with gentle directional steering!
+            if (moveMagnitude > 0.1f && moveInputDir.sqrMagnitude > 0.01f)
+            {
+                var desiredRot = Quaternion.LookRotation(moveInputDir, Vector3.up);
+                transform.rotation = Quaternion.Slerp(transform.rotation, desiredRot, 1f - Mathf.Exp(-(turnSmoothSpeed * 0.45f) * dt));
+            }
+            float targetRollSpeed = Mathf.Max(12.8f, _planarVelocity.magnitude - 1.5f * dt);
+            _planarVelocity = transform.forward * targetRollSpeed;
+            return;
+        }
+
+        if (_isBellySliding || _isSlideKicking || _isSlopeSliding)
+        {
+            if (_isSlopeSliding && moveMagnitude > 0.1f && moveInputDir.sqrMagnitude > 0.01f)
+            {
+                _planarVelocity += moveInputDir * (6.5f * dt);
+            }
+            var slideDrag = _isSlopeSliding ? 1.1f : (_isSlideKicking ? 3.2f : 4.2f);
+            _planarVelocity = Vector3.MoveTowards(_planarVelocity, Vector3.zero, slideDrag * dt);
+            if (_planarVelocity.sqrMagnitude > 0.25f)
+            {
+                var slideFace = new Vector3(_planarVelocity.x, 0f, _planarVelocity.z).normalized;
+                transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(slideFace, Vector3.up), 10f * dt);
+            }
+            if (_planarVelocity.magnitude < 1.3f && grounded && !_isSlopeSliding)
+            {
+                _isBellySliding = false;
+                _isSlideKicking = false;
+                _isDiving = false;
+            }
+            return;
+        }
+
+        if (_isDiving && !grounded)
+        {
+            _planarVelocity = Vector3.MoveTowards(_planarVelocity, _planarVelocity.normalized * 11.4f, 6f * dt);
+            return;
+        }
+
+        if (_skidReversalTimer > 0f) _skidReversalTimer -= dt;
+
+        var topSpeed = _isCrouching ? crawlSpeed : (_carriedObject != null ? maxRunSpeed * 0.88f : maxRunSpeed);
+        var targetVel = moveInputDir * (topSpeed * moveMagnitude);
+
+        // Skid Reversal detection (Odyssey / SM64 pivot + dust puff + screech)
+        if (grounded && moveMagnitude > 0.45f && _planarVelocity.magnitude > maxRunSpeed * 0.52f)
+        {
+            var dot = Vector3.Dot(_planarVelocity.normalized, moveInputDir);
+            if (dot < -0.58f && _skidReversalTimer <= 0f)
+            {
+                _skidReversalTimer = 0.40f;
+                if (GameAudio.Instance != null) GameAudio.Instance.PlaySkidSound();
+                if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
+            }
+        }
+
+        var rate = grounded ? (moveMagnitude > 0.05f ? acceleration : deceleration) : airControl;
+        _planarVelocity = Vector3.MoveTowards(_planarVelocity, targetVel, rate * dt);
+
+        if (moveMagnitude > 0.05f && moveInputDir.sqrMagnitude > 0.001f)
+        {
+            _lastRunDirection = moveInputDir;
+            var desiredRot = Quaternion.LookRotation(moveInputDir, Vector3.up);
+            var rotRate = grounded ? (_planarVelocity.magnitude < 3.0f ? turnSmoothSpeed * 1.45f : turnSmoothSpeed) : turnSmoothSpeed * 0.55f;
+            transform.rotation = Quaternion.Slerp(transform.rotation, desiredRot, 1f - Mathf.Exp(-rotRate * dt));
+        }
+    }
+
+    private void UpdateVerticalPhysics(bool grounded, float dt)
+    {
+        if (grounded && _verticalVelocity < 0f)
+        {
+            _verticalVelocity = -3.8f;
+            return;
+        }
+
+        // Odyssey Apex Float + Crisp Fall!
+        float gScale = 1.0f;
+        if (_isLongJumping) gScale = 0.78f;
+        else if (Mathf.Abs(_verticalVelocity) < 3.2f) gScale = 0.68f;
+        else if (_verticalVelocity < -1.2f) gScale = 1.24f;
+
+        _verticalVelocity += gravity * gScale * dt;
+        _verticalVelocity = Mathf.Max(_verticalVelocity, -29.0f);
+    }
+
+    private void OnJustLanded()
+    {
+        _landedTimer = 0f;
         _isBackflipping = false;
         _isSideFlipping = false;
         _isLongJumping = false;
-        if (_attackComboStage == 4) _attackComboStage = 0;
+        _isWallSliding = false;
+        _usedAirSpinHover = false;
+        _jumpCutApplied = false;
+
+        if (_isGroundPounding)
+        {
+            _isGroundPounding = false;
+            _groundPoundImpactTimer = 0.22f;
+            _planarVelocity = Vector3.zero;
+
+            if (impulseSource != null) impulseSource.GenerateImpulse(0.45f);
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
+            if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 0.15f, isStar: false);
+            if (motion != null) motion.TriggerLandSquash(1.35f);
+
+            CheckMeleeHitbox(transform.position, 2.35f);
+            return;
+        }
 
         if (_isDiving)
         {
-            // Transition smoothly from Air Dive into Belly Slide on ground!
             _isDiving = false;
             _isBellySliding = true;
-            _planarVelocity = transform.forward * Mathf.Max(_planarVelocity.magnitude, maxRunSpeed * 1.25f);
+            _planarVelocity = transform.forward * Mathf.Max(_planarVelocity.magnitude, 11.4f);
             if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
-        }
-        else if (_isGroundPounding)
-        {
-            _isGroundPounding = false;
-            _groundPoundImpactTimer = 0.28f;
-            if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
-            if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position);
-            if (impulseSource != null) impulseSource.GenerateImpulse(0.45f);
-            if (GameManager.Instance != null) GameManager.Instance.TriggerHitStop();
-            CheckMeleeHitbox(transform.position, 2.8f);
-        }
-        else if (VFXPool.Instance != null)
-        {
-            VFXPool.Instance.SpawnFootstepPuff(transform.position);
+            if (motion != null) motion.TriggerLandSquash(1.1f);
+            return;
         }
 
-        if (motion != null) motion.TriggerLandSquash(wasHeavy);
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
+        if (motion != null) motion.TriggerLandSquash(0.85f);
+    }
+
+    // -------------------------------------------------------------------------
+    // UNIVERSAL MOVING PLATFORM CARRY & WALL SLIDE TRACKING
+    // -------------------------------------------------------------------------
+    private void ApplyMovingPlatformCarry()
+    {
+        if (_activePlatform == null || !_cc.isGrounded)
+        {
+            _activePlatform = null;
+            return;
+        }
+
+        var deltaPos = _activePlatform.position - _lastPlatformWorldPos;
+        var deltaRot = _activePlatform.rotation * Quaternion.Inverse(_lastPlatformWorldRot);
+
+        if (deltaPos.sqrMagnitude < 4.5f)
+        {
+            if (deltaPos.sqrMagnitude > 0.000001f)
+            {
+                _cc.Move(deltaPos);
+            }
+            var offsetFromPivot = transform.position - _activePlatform.position;
+            var rotatedOffset = deltaRot * offsetFromPivot;
+            var rotDeltaMove = rotatedOffset - offsetFromPivot;
+            if (rotDeltaMove.sqrMagnitude > 0.000001f)
+            {
+                _cc.Move(rotDeltaMove);
+            }
+            var yawAngle = deltaRot.eulerAngles.y;
+            if (Mathf.Abs(Mathf.DeltaAngle(0f, yawAngle)) > 0.01f)
+            {
+                transform.Rotate(0f, yawAngle, 0f, Space.World);
+            }
+        }
+
+        _lastPlatformWorldPos = _activePlatform.position;
+        _lastPlatformWorldRot = _activePlatform.rotation;
     }
 
     private void OnControllerColliderHit(ControllerColliderHit hit)
     {
-        // Track moving platform under Mario's feet
-        if (hit.normal.y > 0.65f && hit.collider != null)
+        if (hit.collider == null) return;
+
+        // Track ANY interactive moving platform (WF, BOB, JRB, BitDW!)
+        if (hit.normal.y > 0.55f)
         {
-            var wf = hit.collider.GetComponentInParent<WhompFortressElement>();
-            var bf = hit.collider.GetComponentInParent<BobOmbBattlefieldController>();
-            var jrb = hit.collider.GetComponentInParent<JollyRogerBayController>();
-            if (wf != null || bf != null || jrb != null)
+            var tf = hit.collider.transform;
+            bool isDynamicPlatform =
+                tf.GetComponentInParent<WhompFortressElement>() != null ||
+                tf.GetComponentInParent<BobOmbBattlefieldController>() != null ||
+                tf.GetComponentInParent<JollyRogerBayController>() != null ||
+                tf.GetComponentInParent<BowserDarkWorldElement>() != null ||
+                tf.name.Contains("Lift") || tf.name.Contains("Seesaw") || tf.name.Contains("Bridge");
+
+            if (isDynamicPlatform)
             {
-                var platTransform = hit.collider.transform;
-                if (_activePlatform != platTransform)
+                if (_activePlatform != tf)
                 {
-                    _activePlatform = platTransform;
-                    _lastPlatformWorldPos = _activePlatform.position;
-                    _lastPlatformWorldRot = _activePlatform.rotation;
+                    _activePlatform = tf;
+                    _lastPlatformWorldPos = tf.position;
+                    _lastPlatformWorldRot = tf.rotation;
                 }
             }
             else
@@ -1086,82 +1992,368 @@ public class MarioRemakeController : MonoBehaviour
             }
         }
 
-        // Track wall normal for Wall-Slide & Wall-Kick
-        if (Mathf.Abs(hit.normal.y) < 0.35f)
+        // Wall contact tracking for crisp Wall Slide + Wall Kick
+        if (Mathf.Abs(hit.normal.y) < 0.35f && !hit.collider.isTrigger)
         {
             _lastWallNormal = hit.normal;
             _lastWallTouchTime = Time.time;
         }
     }
 
-    private Vector2 ReadMoveInput()
+    // -------------------------------------------------------------------------
+    // MOTION SYNC
+    // -------------------------------------------------------------------------
+    private void UpdateMotionComponentOnly()
     {
-        if (debugMoveInput.sqrMagnitude > 0.001f)
-            return Vector2.ClampMagnitude(debugMoveInput, 1f);
+        if (motion == null) return;
+        float dt = Time.deltaTime > 0.0001f ? Time.deltaTime : 0.016f;
+        float currYaw = transform.eulerAngles.y;
+        float yawRate = Mathf.DeltaAngle(_prevFacingYaw, currYaw) / dt;
+        _prevFacingYaw = currYaw;
 
-        var move = Vector2.zero;
+        motion.NormalizedSpeed = Mathf.Clamp01(_planarVelocity.magnitude / Mathf.Max(0.1f, maxRunSpeed));
+        motion.PlanarVelocity = _planarVelocity;
+        motion.IsGrounded = _cc.isGrounded;
+        motion.JumpStage = JumpComboStage;
+        motion.IsDiving = _isDiving;
+        motion.IsCrouching = _isCrouching;
+        motion.IsSliding = _isBellySliding;
+        motion.IsWallSliding = _isWallSliding;
+        motion.IsLedgeHanging = _isLedgeHanging;
+        motion.IsSpinningBowser = IsSpinningBowser;
+        motion.IsSwimming = IsSwimming;
+        motion.IsSkidding = _skidReversalTimer > 0f;
+        motion.TurnBankRate = yawRate;
+        motion.IsGroundPounding = _isGroundPounding;
+        motion.GroundPoundStallNormalized = _isGroundPounding ? Mathf.Clamp01(_groundPoundStallTimer / 0.22f) : 0f;
+        motion.IsBackflipping = _isBackflipping;
+        motion.IsSideFlipping = _isSideFlipping;
+        motion.IsLongJumping = _isLongJumping;
+        motion.IsRolling = _isRolling;
+        motion.IsSpinAttacking = _isSpinAttacking;
+        motion.IsSlopeSliding = _isSlopeSliding;
+        motion.IsClimbingPole = _activePole != null;
+        motion.IsPoleHandstand = _isPoleHandstand;
+        motion.PoleClimbSpeed = _activePole != null ? Mathf.Clamp(ReadMovementInput().y, -1f, 1f) : 0f;
+        motion.IsCarryingObject = _carriedObject != null;
+        motion.AttackStage = _attackComboStage;
+        motion.AttackProgress = _attackDuration > 0f ? 1f - Mathf.Clamp01(_attackTimer / _attackDuration) : 0f;
+    }
+
+    // -------------------------------------------------------------------------
+    // SWIMMING & HEALTH / DAMAGE
+    // -------------------------------------------------------------------------
+    public void HealHealth(int wedges)
+    {
+        currentHealth = Mathf.Clamp(currentHealth + wedges, 0, maxHealth);
+    }
+
+    public void RefillOxygen(float seconds)
+    {
+        currentOxygenSeconds = Mathf.Clamp(currentOxygenSeconds + seconds, 0f, maxOxygenSeconds);
+    }
+
+    public void TakeDamage(int damageWedges, Vector3 hazardSourcePos, bool ignoreInvuln = false)
+    {
+        if (GameManager.Instance != null && GameManager.Instance.currentState != GameState.Playing) return;
+        if (!ignoreInvuln && _hurtInvulnTimer > 0f) return;
+
+        // Release Bowser tail if hit mid-spin
+        if (_spinningBowser != null)
+        {
+            _spinningBowser = null;
+        }
+        if (_isFirstPersonLook) ExitFirstPersonLook();
+        _activePole = null;
+        _isPoleHandstand = false;
+        _isRolling = false;
+        _isSpinAttacking = false;
+        _isSlopeSliding = false;
+
+        currentHealth = Mathf.Max(0, currentHealth - Mathf.Max(1, damageWedges));
+        _hurtInvulnTimer = hurtInvulnDuration;
+
+        var push = transform.position - hazardSourcePos;
+        push.y = 0f;
+        if (push.sqrMagnitude < 0.01f) push = -transform.forward;
+        push.Normalize();
+        _planarVelocity = push * 6.5f;
+        _verticalVelocity = Mathf.Max(_verticalVelocity, 5.2f);
+        _isDiving = false;
+        _isBellySliding = false;
+        _isGroundPounding = false;
+        _isLedgeHanging = false;
+
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayHurtSound();
+        if (impulseSource != null) impulseSource.GenerateImpulse(0.45f);
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 0.7f, isStar: false);
+
+        if (currentHealth <= 0) RespawnAfterDeath();
+    }
+
+    private void RespawnAfterDeath()
+    {
+        lives = Mathf.Max(0, lives - 1);
+        if (lives == 0) lives = 4;
+        currentHealth = maxHealth;
+        currentOxygenSeconds = maxOxygenSeconds;
+        IsSwimming = false;
+        _planarVelocity = Vector3.zero;
+        _verticalVelocity = 0f;
+        _isDiving = false;
+        _isBellySliding = false;
+        _isGroundPounding = false;
+        _isLedgeHanging = false;
+        _isRolling = false;
+        _isSpinAttacking = false;
+        _isSlopeSliding = false;
+        _activePole = null;
+        _isPoleHandstand = false;
+        if (_isFirstPersonLook) ExitFirstPersonLook();
+        if (_carriedObject != null)
+        {
+            _carriedObject.ResetCarriable();
+            _carriedObject = null;
+        }
+        _activePlatform = null;
+
+        if (_cc != null) _cc.enabled = false;
+        transform.SetPositionAndRotation(_spawnPosition, _spawnRotation);
+        if (_cc != null) _cc.enabled = true;
+
+        _hurtInvulnTimer = 1.2f;
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(_spawnPosition + Vector3.up * 0.8f, isStar: false);
+    }
+
+    private void UpdateDamageFlashAndAbyssCheck(float dt)
+    {
+        if (transform.position.y < abyssDeathY)
+        {
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayHurtSound();
+            RespawnAfterDeath();
+            return;
+        }
+
+        if (_hurtInvulnTimer > 0f)
+        {
+            _hurtInvulnTimer -= dt;
+            var flashOn = Mathf.Sin(Time.unscaledTime * 36f) > 0f;
+            SetHeroVisibility(flashOn && !_isFirstPersonLook);
+        }
+        else if (!_isFirstPersonLook)
+        {
+            SetHeroVisibility(true);
+        }
+    }
+
+    private void SetHeroVisibility(bool visible)
+    {
+        if (_heroRenderers == null) return;
+        foreach (var r in _heroRenderers)
+        {
+            if (r != null && r.enabled != visible) r.enabled = visible;
+        }
+    }
+
+    private bool CheckAndHandleSwimmingState(float dt)
+    {
+        var pos = transform.position;
+        bool insideBayBounds = pos.x >= waterBoundsX.x && pos.x <= waterBoundsX.y &&
+                               pos.z >= waterBoundsZ.x && pos.z <= waterBoundsZ.y;
+        bool submerged = insideBayBounds && pos.y < waterSurfaceY - 0.15f;
+
+        if (!submerged)
+        {
+            if (IsSwimming)
+            {
+                IsSwimming = false;
+                if (ReadJumpHeldOrPressed() && _verticalVelocity > 0.5f)
+                {
+                    _verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * singleJumpHeight);
+                    if (GameAudio.Instance != null) GameAudio.Instance.PlayJumpSound(1);
+                }
+            }
+            currentOxygenSeconds = Mathf.MoveTowards(currentOxygenSeconds, maxOxygenSeconds, 12f * dt);
+            return false;
+        }
+
+        IsSwimming = true;
+        _isDiving = false;
+        _isBellySliding = false;
+        _isGroundPounding = false;
+        _isWallSliding = false;
+        _isLedgeHanging = false;
+        _isRolling = false;
+        _isSpinAttacking = false;
+        _isSlopeSliding = false;
+        RecordMoveStat("Swim");
+
+        bool metalActive = JollyRogerBayController.IsMetalMarioActive;
+        bool atSurface = pos.y >= waterSurfaceY - 0.45f;
+        if (atSurface)
+            currentOxygenSeconds = Mathf.MoveTowards(currentOxygenSeconds, maxOxygenSeconds, 14f * dt);
+        else if (!metalActive)
+            currentOxygenSeconds = Mathf.Max(0f, currentOxygenSeconds - dt);
+
+        if (currentOxygenSeconds <= 0f && !metalActive)
+        {
+            currentOxygenSeconds = 4f;
+            TakeDamage(1, pos, ignoreInvuln: true);
+            return true;
+        }
+
+        var rawInput = ReadMovementInput();
+        var camFwdXZ = Quaternion.Euler(0f, _cameraYaw, 0f) * Vector3.forward;
+        var camRightXZ = Quaternion.Euler(0f, _cameraYaw, 0f) * Vector3.right;
+        var planarInput = camFwdXZ * rawInput.y + camRightXZ * rawInput.x;
+        var kb = Keyboard.current;
+
+        var swimVelY = metalActive ? -8.5f : -0.35f;
+        bool swimFast = !metalActive && ((kb != null && kb.spaceKey.isPressed) || ReadJumpPressedOnly());
+        if (swimFast)
+        {
+            swimVelY = Mathf.Lerp(2.4f, 4.6f, Mathf.Clamp01(rawInput.magnitude));
+            _swimPitch = Mathf.MoveTowards(_swimPitch, 18f, 120f * dt);
+        }
+        else if (ReadCrouchHeld() && !metalActive)
+        {
+            swimVelY = -5.2f;
+            _swimPitch = Mathf.MoveTowards(_swimPitch, -32f, 140f * dt);
+        }
+        else
+        {
+            _swimPitch = Mathf.MoveTowards(_swimPitch, 0f, 90f * dt);
+        }
+
+        float targetSpeed = metalActive ? 5.6f : (swimFast ? swimFlutterSpeed : swimStrokeSpeed);
+        var desiredVel = planarInput.sqrMagnitude > 0.01f
+            ? planarInput.normalized * (targetSpeed * Mathf.Clamp01(rawInput.magnitude))
+            : Vector3.zero;
+
+        _planarVelocity = Vector3.MoveTowards(_planarVelocity, desiredVel, 22f * dt);
+        _verticalVelocity = Mathf.MoveTowards(_verticalVelocity, swimVelY, 20f * dt);
+
+        var moveVec = _planarVelocity + Vector3.up * _verticalVelocity;
+        if (pos.y + moveVec.y * dt > waterSurfaceY - 0.08f && !swimFast)
+            moveVec.y = Mathf.Min(0f, moveVec.y);
+
+        _cc.Move(moveVec * dt);
+
+        if (planarInput.sqrMagnitude > 0.01f)
+        {
+            var lookRot = Quaternion.LookRotation(planarInput.normalized, Vector3.up) * Quaternion.Euler(-_swimPitch * 0.45f, 0f, 0f);
+            transform.rotation = Quaternion.Slerp(transform.rotation, lookRot, 10f * dt);
+        }
+
+        if (ReadAttackPressed()) CheckMeleeHitbox(transform.position + transform.forward * 1.15f + Vector3.up * 0.6f, 1.55f);
+        return true;
+    }
+
+    private bool ReadJumpPressedOnly() => (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame) || debugJumpTrigger;
+    private bool ReadJumpHeldOrPressed() => (Keyboard.current != null && Keyboard.current.spaceKey.isPressed) || debugJumpTrigger;
+
+    // -------------------------------------------------------------------------
+    // INPUT HELPERS
+    // -------------------------------------------------------------------------
+    private Vector2 ReadMovementInput()
+    {
+        if (debugMoveInput.sqrMagnitude > 0.001f) return Vector2.ClampMagnitude(debugMoveInput, 1f);
+        var vec = Vector2.zero;
         var kb = Keyboard.current;
         if (kb != null)
         {
-            if (kb.wKey.isPressed || kb.upArrowKey.isPressed) move.y += 1f;
-            if (kb.sKey.isPressed || kb.downArrowKey.isPressed) move.y -= 1f;
-            if (kb.dKey.isPressed) move.x += 1f;
-            if (kb.aKey.isPressed) move.x -= 1f;
+            if (kb.aKey.isPressed) vec.x -= 1f;
+            if (kb.dKey.isPressed) vec.x += 1f;
+            if (kb.sKey.isPressed) vec.y -= 1f;
+            if (kb.wKey.isPressed) vec.y += 1f;
         }
-
         var gp = Gamepad.current;
-        if (gp != null && gp.leftStick.ReadValue().sqrMagnitude > move.sqrMagnitude)
-        {
-            move = gp.leftStick.ReadValue();
-        }
-
-        return Vector2.ClampMagnitude(move, 1f);
+        if (gp != null && vec.sqrMagnitude < 0.01f) vec = gp.leftStick.ReadValue();
+        return Vector2.ClampMagnitude(vec, 1f);
     }
 
-    private bool ReadJumpPressed()
+    private (bool pressedThisFrame, bool held) ReadJumpInput()
     {
+        var pressed = false;
+        var held = false;
         if (debugJumpTrigger)
         {
             debugJumpTrigger = false;
-            return true;
+            pressed = true;
+            held = true;
         }
         var kb = Keyboard.current;
-        if (kb != null && kb.spaceKey.wasPressedThisFrame) return true;
-        var gp = Gamepad.current;
-        return gp != null && gp.buttonSouth.wasPressedThisFrame;
-    }
-
-    private bool ReadAttackPressed()
-    {
-        var kb = Keyboard.current;
-        if (kb != null && (kb.jKey.wasPressedThisFrame || kb.fKey.wasPressedThisFrame)) return true;
-        var mouse = Mouse.current;
-        if (mouse != null && mouse.leftButton.wasPressedThisFrame && GameManager.Instance != null && GameManager.Instance.currentState == GameState.Playing)
-            return true;
-        var gp = Gamepad.current;
-        return gp != null && gp.buttonWest.wasPressedThisFrame;
-    }
-
-    private bool ReadDivePressed()
-    {
-        if (debugDiveTrigger)
+        if (kb != null)
         {
-            debugDiveTrigger = false;
-            return true;
+            if (kb.spaceKey.wasPressedThisFrame) pressed = true;
+            if (kb.spaceKey.isPressed) held = true;
         }
-        var kb = Keyboard.current;
-        if (kb != null && kb.kKey.wasPressedThisFrame) return true;
         var gp = Gamepad.current;
-        return gp != null && gp.buttonNorth.wasPressedThisFrame;
+        if (gp != null)
+        {
+            if (gp.buttonSouth.wasPressedThisFrame) pressed = true;
+            if (gp.buttonSouth.isPressed) held = true;
+        }
+        return (pressed, held);
     }
 
     private bool ReadCrouchHeld()
     {
-        if (debugGroundPoundTrigger) return true;
         var kb = Keyboard.current;
-        if (kb != null && (kb.leftShiftKey.isPressed || kb.cKey.isPressed || kb.leftCtrlKey.isPressed)) return true;
+        if (kb != null && (kb.cKey.isPressed || kb.leftCtrlKey.isPressed)) return true;
         var gp = Gamepad.current;
-        return gp != null && (gp.leftTrigger.isPressed || gp.rightTrigger.isPressed);
+        return gp != null && (gp.leftTrigger.isPressed || gp.buttonEast.isPressed);
+    }
+
+    private bool ReadCrouchPressedThisFrame()
+    {
+        var kb = Keyboard.current;
+        if (kb != null && (kb.cKey.wasPressedThisFrame || kb.leftCtrlKey.wasPressedThisFrame)) return true;
+        var gp = Gamepad.current;
+        return gp != null && (gp.leftTrigger.wasPressedThisFrame || gp.buttonEast.wasPressedThisFrame);
+    }
+
+    private bool ReadRollPressed()
+    {
+        if (debugRollTrigger)
+        {
+            debugRollTrigger = false;
+            return true;
+        }
+        var kb = Keyboard.current;
+        if (kb != null)
+        {
+            if (kb.leftShiftKey.wasPressedThisFrame) return true;
+            if (ReadCrouchHeld() && kb.eKey.wasPressedThisFrame) return true;
+        }
+        var gp = Gamepad.current;
+        return gp != null && (gp.rightTrigger.wasPressedThisFrame || (ReadCrouchHeld() && gp.buttonNorth.wasPressedThisFrame));
+    }
+
+    private bool ReadSpinPressed()
+    {
+        if (debugSpinAttackTrigger)
+        {
+            debugSpinAttackTrigger = false;
+            return true;
+        }
+        var kb = Keyboard.current;
+        if (kb != null && (kb.zKey.wasPressedThisFrame || kb.xKey.wasPressedThisFrame)) return true;
+        var gp = Gamepad.current;
+        return gp != null && gp.rightShoulder.wasPressedThisFrame;
+    }
+
+    private bool ReadFirstPersonPressed()
+    {
+        if (debugToggleFirstPerson)
+        {
+            debugToggleFirstPerson = false;
+            return true;
+        }
+        var kb = Keyboard.current;
+        if (kb != null && kb.vKey.wasPressedThisFrame) return true;
+        var gp = Gamepad.current;
+        return gp != null && gp.dpad.up.wasPressedThisFrame;
     }
 
     private bool ReadGroundPoundPressed()
@@ -1172,8 +2364,36 @@ public class MarioRemakeController : MonoBehaviour
             return true;
         }
         var kb = Keyboard.current;
-        if (kb != null && (kb.cKey.wasPressedThisFrame || kb.leftCtrlKey.wasPressedThisFrame || kb.leftShiftKey.wasPressedThisFrame)) return true;
+        if (kb != null && (kb.leftCtrlKey.wasPressedThisFrame || kb.cKey.wasPressedThisFrame || kb.leftShiftKey.wasPressedThisFrame))
+            return true;
         var gp = Gamepad.current;
-        return gp != null && (gp.leftTrigger.wasPressedThisFrame || gp.rightTrigger.wasPressedThisFrame);
+        return gp != null && (gp.leftTrigger.wasPressedThisFrame || gp.buttonEast.wasPressedThisFrame);
+    }
+
+    private bool ReadDivePressed()
+    {
+        if (debugDiveTrigger)
+        {
+            debugDiveTrigger = false;
+            return true;
+        }
+        var kb = Keyboard.current;
+        if (kb != null && (kb.eKey.wasPressedThisFrame || kb.qKey.wasPressedThisFrame)) return true;
+        var gp = Gamepad.current;
+        return gp != null && gp.buttonNorth.wasPressedThisFrame;
+    }
+
+    private bool ReadAttackPressed()
+    {
+        var mouse = Mouse.current;
+        var overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        if (mouse != null && mouse.leftButton.wasPressedThisFrame && !overUi)
+        {
+            return true;
+        }
+        var kb = Keyboard.current;
+        if (kb != null && (kb.fKey.wasPressedThisFrame || kb.jKey.wasPressedThisFrame)) return true;
+        var gp = Gamepad.current;
+        return gp != null && gp.buttonWest.wasPressedThisFrame;
     }
 }
