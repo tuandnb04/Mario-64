@@ -31,6 +31,10 @@ public enum GameState
 public class GameManager : MonoBehaviour
 {
     private static GameManager instance;
+    private static readonly int FaceDilate = Shader.PropertyToID("_FaceDilate");
+    private static readonly int OutlineWidth = Shader.PropertyToID("_OutlineWidth");
+    private static readonly int OutlineColor = Shader.PropertyToID("_OutlineColor");
+
     public static GameManager Instance
     {
         get
@@ -127,8 +131,9 @@ public class GameManager : MonoBehaviour
         SetupActMissionState(1);
         SetStateImmediate(GameState.Title);
         var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-        bool isJrb = !string.IsNullOrEmpty(sceneName) && sceneName.Contains("JollyRoger");
-        bool isBitDw = !string.IsNullOrEmpty(sceneName) && (sceneName.Contains("Bowser") || sceneName.Contains("DarkWorld"));
+        var isJrb = !string.IsNullOrEmpty(sceneName) && sceneName.Contains("JollyRoger");
+        var isBitDw = !string.IsNullOrEmpty(sceneName) && (sceneName.Contains("Bowser") || sceneName.Contains("DarkWorld"));
+        var isCcm = !string.IsNullOrEmpty(sceneName) && sceneName.Contains("Cool");
         if (isJrb && titleOrbitRig != null)
         {
             titleOrbitRig.position = new Vector3(16f, 10f, -32f);
@@ -143,7 +148,8 @@ public class GameManager : MonoBehaviour
         {
             GameAudio.Instance.SetCourseTheme(
                 isBitDw ? Sm64CourseTheme.DarkWorldOrgan :
-                (isJrb ? Sm64CourseTheme.OceanBayWaltz : Sm64CourseTheme.FortressMarch));
+                (isCcm ? Sm64CourseTheme.CoolMountainBell :
+                (isJrb ? Sm64CourseTheme.OceanBayWaltz : Sm64CourseTheme.FortressMarch)));
         }
     }
 
@@ -172,7 +178,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    public void SetupActMissionState(int actNumber, bool isFreshRun = true)
+    private void SetupActMissionState(int actNumber, bool isFreshRun = true)
     {
         currentActNumber = Mathf.Clamp(actNumber, 1, Mathf.Max(1, targetStarsToWin));
         if (isFreshRun) redCoinsCollected = 0;
@@ -258,7 +264,7 @@ public class GameManager : MonoBehaviour
             if (wfElem == null) continue;
             if (wfElem.hazardType == FortressHazardType.BreakawayBrickWall)
             {
-                bool wallStarDone = wfElem.revealedStar != null && wfElem.revealedStar.IsCollected;
+                var wallStarDone = wfElem.revealedStar != null && wfElem.revealedStar.IsCollected;
                 if (isFreshRun || (!wallStarDone && wfElem.gameObject.activeSelf))
                 {
                     wfElem.ResetElement();
@@ -349,10 +355,17 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // 4. Activate uncollected open-world Power Stars across all 3 SM64 Courses!
-        foreach (var item in _allCollectibles)
+        if (isFreshRun)
         {
-            if (item == null || item.kind != CollectibleKind.PowerStar) continue;
+            foreach (var ccmElem in FindObjectsByType<CoolCoolMountainController>(FindObjectsInactive.Include))
+            {
+                if (ccmElem != null) ccmElem.ResetCcmElement();
+            }
+        }
+
+        // 4. Activate uncollected open-world Power Stars across all 3 SM64 Courses!
+        foreach (var item in _allCollectibles.Where(item => item != null && item.kind == CollectibleKind.PowerStar))
+        {
             if (item.IsCollected)
             {
                 item.gameObject.SetActive(false);
@@ -385,16 +398,20 @@ public class GameManager : MonoBehaviour
             {
                 if (bowserBoss != null && bowserBoss.rewardBigKeyStar == item) isGated = true;
             }
+            foreach (var ccmElem in FindObjectsByType<CoolCoolMountainController>(FindObjectsInactive.Include))
+            {
+                if (ccmElem != null && ccmElem.rewardStar == item) isGated = true;
+            }
 
             if (isWhompsFortress)
             {
-                bool wallBrokenStarReady = false;
+                var wallBrokenStarReady = false;
                 foreach (var wfElem in FindObjectsByType<WhompFortressElement>(FindObjectsInactive.Include))
                 {
                     if (wfElem != null && wfElem.hazardType == FortressHazardType.BreakawayBrickWall && wfElem.revealedStar == item && !wfElem.gameObject.activeSelf)
                         wallBrokenStarReady = true;
                 }
-                bool redCoinStarReady = (item == secretRedCoinStar && redCoinsCollected >= 8);
+                var redCoinStarReady = (item == secretRedCoinStar && redCoinsCollected >= 8);
 
                 if (wallBrokenStarReady || redCoinStarReady)
                     item.gameObject.SetActive(true);
@@ -407,7 +424,7 @@ public class GameManager : MonoBehaviour
             }
             else
             {
-                bool redCoinStarReady = (item == secretRedCoinStar && redCoinsCollected >= 8);
+                var redCoinStarReady = (item == secretRedCoinStar && redCoinsCollected >= 8);
                 if (redCoinStarReady)
                     item.gameObject.SetActive(true);
                 else if (isGated)
@@ -566,13 +583,13 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    public void PauseGame()
+    private void PauseGame()
     {
         if (GameAudio.Instance != null) GameAudio.Instance.PlayUIClick();
         TransitionToState(GameState.Paused);
     }
 
-    public void ResumeGame()
+    private void ResumeGame()
     {
         if (GameAudio.Instance != null) GameAudio.Instance.PlayUIClick();
         TransitionToState(GameState.Playing);
@@ -583,14 +600,14 @@ public class GameManager : MonoBehaviour
         TransitionToState(GameState.Ended);
     }
 
-    public void ReturnToTitle()
+    private void ReturnToTitle()
     {
         if (GameAudio.Instance != null) GameAudio.Instance.PlayUIClick();
         ResetRunStateClean();
         TransitionToState(GameState.Title);
     }
 
-    public void RestartRun()
+    private void RestartRun()
     {
         if (GameAudio.Instance != null) GameAudio.Instance.PlayUIClick();
         ResetRunStateClean();
@@ -737,7 +754,7 @@ public class GameManager : MonoBehaviour
 
         if (newState == GameState.Ended && endedSummaryText != null)
         {
-            bool isBowserCourse = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name.Contains("Bowser");
+            var isBowserCourse = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name.Contains("Bowser");
             endedSummaryText.text = isBowserCourse
                 ? $"BOWSER IN THE DARK WORLD CLEAR!\n" +
                   $"BOWSER KEY OBTAINED  •  STARS: {starsCollected}/{targetStarsToWin}  •  COINS: {coinsCollected}"
@@ -807,7 +824,7 @@ public class GameManager : MonoBehaviour
                 SpawnFloatingWorldText(worldPos, "+1 POWER STAR!", Palette.AccentStarGold);
                 TriggerMilestoneSequence($"STAR #{starsCollected}/{targetStarsToWin} COLLECTED!", starTitle);
 
-                bool isBowserKeyWin = item != null && (item.gameObject.name.Contains("BigKey") || starTitle.Contains("BIG KEY"));
+                var isBowserKeyWin = item != null && (item.gameObject.name.Contains("BigKey") || starTitle.Contains("BIG KEY"));
                 if (starsCollected >= targetStarsToWin || isBowserKeyWin)
                 {
                     StartCoroutine(DelayedWinRoutine(2.1f));
@@ -820,7 +837,7 @@ public class GameManager : MonoBehaviour
                 else if (item != null && item.missionActIndex == 2)
                 {
                     // In Whomp's Fortress if Star 2 is taken first while Star 1 (King) isn't done yet, stay clear or return King if requested via Act 1
-                    bool hasTower = GameObject.Find("LookoutTower_Summit") != null || GameObject.Find("FortressLookoutTower") != null;
+                    var hasTower = GameObject.Find("LookoutTower_Summit") != null || GameObject.Find("FortressLookoutTower") != null;
                     if (hasTower)
                     {
                         var star1Check = _allCollectibles.FirstOrDefault(sc => sc != null && sc.kind == CollectibleKind.PowerStar && sc.missionActIndex == 1);
@@ -973,7 +990,7 @@ public class GameManager : MonoBehaviour
         _milestoneRoutine = null;
     }
 
-    private void SpawnFloatingWorldText(Vector3 worldPos, string text, Color color)
+    public void SpawnFloatingWorldText(Vector3 worldPos, string text, Color color)
     {
         var startPos = worldPos + Vector3.up * 0.85f;
         var go = new GameObject("FloatingPickupText")
@@ -1071,13 +1088,23 @@ public class GameManager : MonoBehaviour
                 ? Color.Lerp(new Color(0.20f, 0.90f, 1.0f), new Color(1.0f, 0.25f, 0.35f), 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 11f))
                 : new Color(0.24f, 0.88f, 1.0f);
         }
-        else if (wedgesActive >= 7) activeColor = new Color(0.22f, 0.62f, 1.0f);
-        else if (wedgesActive >= 5) activeColor = new Color(0.24f, 0.90f, 0.38f);
-        else if (wedgesActive >= 3) activeColor = new Color(1.0f, 0.82f, 0.14f);
-        else
+        else switch (wedgesActive)
         {
-            var pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 12f);
-            activeColor = Color.Lerp(new Color(0.96f, 0.20f, 0.14f), new Color(1.0f, 0.65f, 0.18f), pulse);
+            case >= 7:
+                activeColor = new Color(0.22f, 0.62f, 1.0f);
+                break;
+            case >= 5:
+                activeColor = new Color(0.24f, 0.90f, 0.38f);
+                break;
+            case >= 3:
+                activeColor = new Color(1.0f, 0.82f, 0.14f);
+                break;
+            default:
+            {
+                var pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 12f);
+                activeColor = Color.Lerp(new Color(0.96f, 0.20f, 0.14f), new Color(1.0f, 0.65f, 0.18f), pulse);
+                break;
+            }
         }
 
         var emptyColor = new Color(0.11f, 0.14f, 0.22f, 0.42f);
@@ -1088,11 +1115,9 @@ public class GameManager : MonoBehaviour
             img.color = i < wedgesActive ? activeColor : emptyColor;
         }
 
-        if (_powerMeterCenterText != null)
-        {
-            _powerMeterCenterText.text = isSwimAir ? "AIR" : (JollyRogerBayController.IsMetalMarioActive ? "MTL" : "PWR");
-            _powerMeterCenterText.color = isSwimAir ? new Color(0.55f, 0.95f, 1.0f) : new Color(1f, 0.92f, 0.45f);
-        }
+        if (_powerMeterCenterText == null) return;
+        _powerMeterCenterText.text = isSwimAir ? "AIR" : (JollyRogerBayController.IsMetalMarioActive ? "MTL" : "PWR");
+        _powerMeterCenterText.color = isSwimAir ? new Color(0.55f, 0.95f, 1.0f) : new Color(1f, 0.92f, 0.45f);
     }
 
     private void EnsureSm64StyledHUD()
@@ -1333,15 +1358,15 @@ public class GameManager : MonoBehaviour
         tmp.color = color;
         tmp.alignment = align;
 
-        if (tmp.fontSharedMaterial != null && tmp.fontSharedMaterial.HasProperty("_OutlineWidth"))
+        if (tmp.fontSharedMaterial != null && tmp.fontSharedMaterial.HasProperty(OutlineWidth))
         {
             if (_sm64OutlinedFontMat == null)
             {
                 _sm64OutlinedFontMat = new Material(tmp.fontSharedMaterial);
-                _sm64OutlinedFontMat.SetColor("_OutlineColor", new Color(0.05f, 0.06f, 0.12f, 1f));
-                _sm64OutlinedFontMat.SetFloat("_OutlineWidth", 0.24f);
-                if (_sm64OutlinedFontMat.HasProperty("_FaceDilate"))
-                    _sm64OutlinedFontMat.SetFloat("_FaceDilate", 0.06f);
+                _sm64OutlinedFontMat.SetColor(OutlineColor, new Color(0.05f, 0.06f, 0.12f, 1f));
+                _sm64OutlinedFontMat.SetFloat(OutlineWidth, 0.24f);
+                if (_sm64OutlinedFontMat.HasProperty(FaceDilate))
+                    _sm64OutlinedFontMat.SetFloat(FaceDilate, 0.06f);
             }
             tmp.fontSharedMaterial = _sm64OutlinedFontMat;
         }
@@ -1358,12 +1383,10 @@ public class GameManager : MonoBehaviour
         var card = panel.transform.Find(cardName);
         if (card == null) return;
         var img = card.GetComponent<Image>();
-        if (img != null)
-        {
-            img.sprite = badgeSprite;
-            img.type = Image.Type.Sliced;
-            img.color = new Color(0.08f, 0.15f, 0.36f, 0.94f);
-        }
+        if (img == null) return;
+        img.sprite = badgeSprite;
+        img.type = Image.Type.Sliced;
+        img.color = new Color(0.08f, 0.15f, 0.36f, 0.94f);
     }
 
     private void BuildSm64StarSelectOverlay(Sprite badgeSprite, TMP_FontAsset font)
@@ -1495,10 +1518,8 @@ public class GameManager : MonoBehaviour
             StyleSm64Tmp(numTmp, font, 20f, Color.white, TextAlignmentOptions.Center);
             numTmp.text = $"{actNum}";
 
-            var capturedAct = actNum;
-            var capturedTitle = starTitle;
             var btn = btnGo.GetComponent<Button>();
-            btn.onClick.AddListener(() => SelectActFromTitle(capturedAct, capturedTitle));
+            btn.onClick.AddListener(() => SelectActFromTitle(actNum, starTitle));
         }
 
         RefreshTitleActSelectionVisual();
@@ -1515,19 +1536,20 @@ public class GameManager : MonoBehaviour
         rRt.anchorMax = new Vector2(0.5f, 0f);
         rRt.pivot = new Vector2(0.5f, 0f);
         rRt.anchoredPosition = new Vector2(0f, 182f);
-        rRt.sizeDelta = new Vector2(820f, 40f);
+        rRt.sizeDelta = new Vector2(960f, 40f);
 
         (string sceneName, string label)[] courses =
         {
             ("BobOmbBattlefield", "1. BOB-OMB"),
             ("WhompsFortress", "2. WHOMP'S"),
             ("JollyRogerBay", "3. JOLLY ROGER"),
-            ("BowserDarkWorld", "4. DARK WORLD"),
-            ("TestPlayground", "5. TEST GYM")
+            ("CoolCoolMountain", "4. COOL COOL"),
+            ("BowserDarkWorld", "5. DARK WORLD"),
+            ("TestPlayground", "6. TEST GYM")
         };
 
         var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-        const float step = 160f;
+        const float step = 152f;
         var x0 = -((courses.Length - 1) * step) * 0.5f;
         for (var i = 0; i < courses.Length; i++)
         {
@@ -1539,11 +1561,11 @@ public class GameManager : MonoBehaviour
             rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = new Vector2(x0 + i * step, 0f);
-            rt.sizeDelta = new Vector2(150f, 34f);
+            rt.sizeDelta = new Vector2(142f, 34f);
 
             var img = bGo.GetComponent<Image>();
             if (badgeSprite != null) { img.sprite = badgeSprite; img.type = Image.Type.Sliced; }
-            bool isCurr = activeScene == scName;
+            var isCurr = activeScene == scName;
             img.color = isCurr
                 ? new Color(0.76f, 0.24f, 0.56f, 0.96f)
                 : new Color(0.11f, 0.16f, 0.34f, 0.88f);
@@ -1556,7 +1578,7 @@ public class GameManager : MonoBehaviour
             tRt.offsetMin = Vector2.zero;
             tRt.offsetMax = Vector2.zero;
             var tmp = tGo.GetComponent<TextMeshProUGUI>();
-            StyleSm64Tmp(tmp, font, 12.5f, Color.white, TextAlignmentOptions.Center);
+            StyleSm64Tmp(tmp, font, 11.8f, Color.white, TextAlignmentOptions.Center);
             tmp.text = lbl;
 
             var targetScene = scName;
@@ -1575,13 +1597,11 @@ public class GameManager : MonoBehaviour
 
     private string GetStarTitleForAct(int actNum)
     {
-        foreach (var c in _allCollectibles)
+        foreach (var c in _allCollectibles.Where(c => c != null && c.kind == CollectibleKind.PowerStar && c.missionActIndex == actNum))
         {
-            if (c != null && c.kind == CollectibleKind.PowerStar && c.missionActIndex == actNum)
-            {
-                return !string.IsNullOrEmpty(c.starTitle) ? c.starTitle : $"ACT {actNum}";
-            }
+            return !string.IsNullOrEmpty(c.starTitle) ? c.starTitle : $"ACT {actNum}";
         }
+
         return $"ACT {actNum}";
     }
 

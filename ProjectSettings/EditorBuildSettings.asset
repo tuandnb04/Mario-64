@@ -6,19 +6,22 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/WhompsFortress.unity
-    guid: 1ce505d12db18494c83a462e2935d0ef
-  - enabled: 1
     path: Assets/Scenes/BobOmbBattlefield.unity
     guid: 5abf206e3b84a744482dc71884273a4f
   - enabled: 1
+    path: Assets/Scenes/WhompsFortress.unity
+    guid: 1ce505d12db18494c83a462e2935d0ef
+  - enabled: 1
     path: Assets/Scenes/JollyRogerBay.unity
     guid: 7179af081965b2f4788737bb6b2be945
+  - enabled: 1
+    path: Assets/Scenes/CoolCoolMountain.unity
+    guid: 4e01d92fdcceac947aa623283257ce1e
   - enabled: 1
     path: Assets/Scenes/BowserDarkWorld.unity
     guid: d90c300c7f5d4cb428cf234fdd5e5665
   - enabled: 1
     path: Assets/Scenes/TestPlayground.unity
-    guid: 00000000000000000000000000000000
+    guid: ff1f39bc83f8725478000a44910b5485
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

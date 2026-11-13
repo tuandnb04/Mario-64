@@ -1,10 +1,6 @@
 using System;
-using System.Collections.Generic;
 using Mario64Remake;
-using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
-using UnityEngine.UI;
 
 /// <summary>
 /// Classic SM64 Carriable Object (Wooden Crate, Metal Box, Throwable Bob-omb, Rock):
@@ -149,6 +145,8 @@ public class CarriableObject : MonoBehaviour
                     }
                 }
                 break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
     }
 
@@ -227,13 +225,13 @@ public class CarriableObject : MonoBehaviour
             {
                 State = CarryState.BrokenRespawning;
                 _respawnTimer = respawnDelay;
-                SetVisibleAndSolid(visible: false, solid: false);
             }
             else
             {
                 State = CarryState.BrokenRespawning;
-                SetVisibleAndSolid(visible: false, solid: false);
             }
+
+            SetVisibleAndSolid(visible: false, solid: false);
         }
         else
         {
@@ -250,10 +248,9 @@ public class CarriableObject : MonoBehaviour
             foreach (var r in _renderers)
                 if (r != null) r.enabled = visible;
         }
-        if (_colliders != null)
-        {
-            foreach (var c in _colliders)
-                if (c != null) c.enabled = solid;
-        }
+
+        if (_colliders == null) return;
+        foreach (var c in _colliders)
+            if (c != null) c.enabled = solid;
     }
 }

@@ -1,10 +1,4 @@
-using System;
-using System.Collections.Generic;
-using Mario64Remake;
-using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
-using UnityEngine.UI;
 
 /// <summary>
 /// Classic SM64 Climbable Pole (also supports Handstand at the top tip and outward Pole Jump).
@@ -13,7 +7,7 @@ public class ClimbablePole : MonoBehaviour
 {
     public float poleRadius = 0.34f;
     public float grabRadius = 0.95f;
-    public float bottomLocalY = 0f;
+    public float bottomLocalY;
     public float topLocalY = 6.0f;
     public bool autoDetectBounds = true;
 
@@ -25,7 +19,7 @@ public class ClimbablePole : MonoBehaviour
         }
     }
 
-    public void SyncBoundsFromRenderers()
+    private void SyncBoundsFromRenderers()
     {
         var rends = GetComponentsInChildren<Renderer>(true);
         if (rends == null || rends.Length == 0) return;

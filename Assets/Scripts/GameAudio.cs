@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
@@ -7,7 +6,8 @@ public enum Sm64CourseTheme
 {
     FortressMarch,
     OceanBayWaltz,
-    DarkWorldOrgan
+    DarkWorldOrgan,
+    CoolMountainBell
 }
 
 /// <summary>
@@ -50,6 +50,7 @@ public class GameAudio : MonoBehaviour
     private AudioClip CourseMarchClip { get; set; }
     private AudioClip OceanBayClip { get; set; }
     private AudioClip DarkWorldOrganClip { get; set; }
+    private AudioClip CoolMountainBellClip { get; set; }
     private AudioClip UIClickClip { get; set; }
     private AudioClip PauseChimeClip { get; set; }
     private AudioClip JumpStage1Clip { get; set; }
@@ -94,12 +95,14 @@ public class GameAudio : MonoBehaviour
     private void DetectCourseThemeFromScene()
     {
         var sceneName = SceneManager.GetActiveScene().name;
-        if (!string.IsNullOrEmpty(sceneName) && (sceneName.Contains("Bowser") || sceneName.Contains("DarkWorld")))
-            _activeTheme = Sm64CourseTheme.DarkWorldOrgan;
-        else if (!string.IsNullOrEmpty(sceneName) && sceneName.Contains("JollyRoger"))
-            _activeTheme = Sm64CourseTheme.OceanBayWaltz;
-        else
-            _activeTheme = Sm64CourseTheme.FortressMarch;
+        _activeTheme = string.IsNullOrEmpty(sceneName) switch
+        {
+            false when (sceneName.Contains("Bowser") || sceneName.Contains("DarkWorld")) => Sm64CourseTheme
+                .DarkWorldOrgan,
+            false when sceneName.Contains("Cool") => Sm64CourseTheme.CoolMountainBell,
+            false when sceneName.Contains("JollyRoger") => Sm64CourseTheme.OceanBayWaltz,
+            _ => Sm64CourseTheme.FortressMarch
+        };
     }
 
     private void SynthesizeAllClips()
@@ -110,6 +113,7 @@ public class GameAudio : MonoBehaviour
         CourseMarchClip = CreateCourseMarchLoop(sr);
         OceanBayClip = CreateOceanBayLoop(sr);
         DarkWorldOrganClip = CreateDarkWorldOrganLoop(sr);
+        CoolMountainBellClip = CreateCoolMountainLoop(sr);
         UIClickClip = CreateMenuBlip(sr, 680f, 1020f, 0.045f);
         PauseChimeClip = CreateMenuBlip(sr, 523.25f, 1046.5f, 0.14f);
         JumpStage1Clip = CreateMarioJumpClip(sr, 330f, 590f, 0.14f);
@@ -132,6 +136,7 @@ public class GameAudio : MonoBehaviour
         {
             Sm64CourseTheme.OceanBayWaltz => OceanBayClip,
             Sm64CourseTheme.DarkWorldOrgan => DarkWorldOrganClip,
+            Sm64CourseTheme.CoolMountainBell => CoolMountainBellClip,
             _ => CourseMarchClip
         };
         AmbientSource.volume = CalculateMusicEffectiveVolume();
@@ -188,6 +193,7 @@ public class GameAudio : MonoBehaviour
         {
             Sm64CourseTheme.OceanBayWaltz => OceanBayClip,
             Sm64CourseTheme.DarkWorldOrgan => DarkWorldOrganClip,
+            Sm64CourseTheme.CoolMountainBell => CoolMountainBellClip,
             _ => CourseMarchClip
         };
         if (nextClip == null || AmbientSource.clip == nextClip) return;
@@ -742,6 +748,60 @@ public class GameAudio : MonoBehaviour
         var fade = Mathf.RoundToInt(sr * 0.03f);
         for (var i = 0; i < samples; i++) data[i] *= Envelope5MS(i, samples, fade);
         var clip = AudioClip.Create("SM64_DarkWorldOrgan", samples, 1, sr, false);
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    private static AudioClip CreateCoolMountainLoop(int sr)
+    {
+        const float stepDur = 0.21f;
+        const int steps = 32;
+        var samples = Mathf.RoundToInt(stepDur * steps * sr);
+        var data = new float[samples];
+        var rng = new System.Random(404);
+        float[] bass = {
+            196.00f, 0f, 293.66f, 246.94f, 196.00f, 0f, 293.66f, 246.94f,
+            174.61f, 0f, 261.63f, 220.00f, 196.00f, 0f, 293.66f, 246.94f,
+            196.00f, 0f, 293.66f, 246.94f, 164.81f, 0f, 246.94f, 196.00f,
+            146.83f, 0f, 220.00f, 196.00f, 196.00f, 246.94f, 293.66f, 0f
+        };
+        float[] lead = {
+            783.99f, 987.77f, 1174.66f, 987.77f, 783.99f, 659.25f, 783.99f, 880.00f,
+            698.46f, 880.00f, 1046.50f, 880.00f, 783.99f, 0f, 659.25f, 587.33f,
+            783.99f, 987.77f, 1174.66f, 1318.51f, 1174.66f, 987.77f, 783.99f, 659.25f,
+            587.33f, 698.46f, 880.00f, 783.99f, 659.25f, 587.33f, 523.25f, 0f
+        };
+
+        for (var s = 0; s < steps; s++)
+        {
+            var startIdx = Mathf.RoundToInt(s * stepDur * sr);
+            var len = Mathf.RoundToInt(stepDur * 1.15f * sr);
+            float bPh = 0f, lPh = 0f;
+            for (var i = 0; i < len && startIdx + i < samples; i++)
+            {
+                var u = (float)i / len;
+                var val = 0f;
+                if (bass[s] > 1f)
+                {
+                    bPh += (2f * Mathf.PI * bass[s]) / sr;
+                    val += (Mathf.Sin(bPh) * 0.7f + Mathf.Sin(bPh * 2f) * 0.25f) * Mathf.Exp(-u * 4.5f) * 0.17f;
+                }
+                if (lead[s] > 1f)
+                {
+                    lPh += (2f * Mathf.PI * lead[s]) / sr;
+                    var bell = Mathf.Sin(lPh) * 0.65f + Mathf.Sin(lPh * 2.0f) * 0.25f + Mathf.Sin(lPh * 3.0f) * 0.1f;
+                    val += bell * Mathf.Exp(-u * 3.6f) * 0.16f;
+                }
+                if (u < 0.18f)
+                {
+                    val += (float)(rng.NextDouble() * 2.0 - 1.0) * Mathf.Exp(-u * 32f) * 0.045f; // crisp sleigh bell tick
+                }
+                data[startIdx + i] = Mathf.Clamp(data[startIdx + i] + val, -0.92f, 0.92f);
+            }
+        }
+        var fade = Mathf.RoundToInt(sr * 0.03f);
+        for (var i = 0; i < samples; i++) data[i] *= Envelope5MS(i, samples, fade);
+        var clip = AudioClip.Create("SM64_CoolMountainBell", samples, 1, sr, false);
         clip.SetData(data, 0);
         return clip;
     }

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 /// <summary>
@@ -16,7 +17,7 @@ using UnityEngine;
 /// </summary>
 public class BowserBossController : MonoBehaviour
 {
-    public enum BossState
+    private enum BossState
     {
         Dormant,
         EntranceDrop,
@@ -114,9 +115,9 @@ public class BowserBossController : MonoBehaviour
     {
         var sh = Shader.Find("Mario64Remake/ToonLit") ?? Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
         _fireMat = new Material(sh) { color = new Color(1.0f, 0.42f, 0.08f) };
-        if (_fireMat.HasProperty("_EmissionColor")) _fireMat.SetColor("_EmissionColor", new Color(2.4f, 0.72f, 0.08f));
+        if (_fireMat.HasProperty(EmissionColor)) _fireMat.SetColor(EmissionColor, new Color(2.4f, 0.72f, 0.08f));
         _shockMat = new Material(sh) { color = new Color(0.85f, 0.25f, 1.0f) };
-        if (_shockMat.HasProperty("_EmissionColor")) _shockMat.SetColor("_EmissionColor", new Color(1.2f, 0.35f, 1.8f));
+        if (_shockMat.HasProperty(EmissionColor)) _shockMat.SetColor(EmissionColor, new Color(1.2f, 0.35f, 1.8f));
     }
 
     public void ResetBoss()
@@ -189,7 +190,7 @@ public class BowserBossController : MonoBehaviour
                 UpdateLeapShockwave(dt);
                 break;
             case BossState.Recovering:
-                UpdateRecovering(dt);
+                UpdateRecovering();
                 break;
             case BossState.GrabbedAndSpun:
                 UpdateGrabbedSpin(dt);
@@ -319,18 +320,16 @@ public class BowserBossController : MonoBehaviour
 
         if (!_leapAirborne && _velocity.y > 0f) _leapAirborne = true;
 
-        if (_leapAirborne && pos.y <= arenaCenter.y + 0.02f)
-        {
-            transform.position = new Vector3(pos.x, arenaCenter.y, pos.z);
-            SpawnShockwaveRing(transform.position, 11.5f, damageHero: true);
-            if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
-            if (MarioRemakeController.Instance != null && MarioRemakeController.Instance.impulseSource != null)
-                MarioRemakeController.Instance.impulseSource.GenerateImpulse(0.42f);
-            EnterState(BossState.Recovering, "Idle");
-        }
+        if (!_leapAirborne || !(pos.y <= arenaCenter.y + 0.02f)) return;
+        transform.position = new Vector3(pos.x, arenaCenter.y, pos.z);
+        SpawnShockwaveRing(transform.position, 11.5f, damageHero: true);
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
+        if (MarioRemakeController.Instance != null && MarioRemakeController.Instance.impulseSource != null)
+            MarioRemakeController.Instance.impulseSource.GenerateImpulse(0.42f);
+        EnterState(BossState.Recovering, "Idle");
     }
 
-    private void UpdateRecovering(float dt)
+    private void UpdateRecovering()
     {
         if (_stateTimer >= 0.95f)
         {
@@ -377,8 +376,10 @@ public class BowserBossController : MonoBehaviour
         if (Mathf.Abs(angularDeltaDeg) > 0.01f)
         {
             var dirSign = Mathf.Sign(angularDeltaDeg);
-            var currentSign = Mathf.Sign(_spinAngularSpeedDeg);
-            if (Mathf.Abs(_spinAngularSpeedDeg) < 120f) currentSign = dirSign;
+            if (Mathf.Abs(_spinAngularSpeedDeg) < 120f)
+            {
+            }
+
             _spinAngularSpeedDeg += dirSign * Mathf.Abs(angularDeltaDeg) * 1.65f;
             _spinAngularSpeedDeg = Mathf.Clamp(_spinAngularSpeedDeg, -560f, 560f);
         }
@@ -471,11 +472,9 @@ public class BowserBossController : MonoBehaviour
                 var d = Vector2.Distance(
                     new Vector2(nextPos.x, nextPos.z),
                     new Vector2(bomb.transform.position.x, bomb.transform.position.z));
-                if (d < 3.15f)
-                {
-                    DetonateSpikedBomb(bomb);
-                    return;
-                }
+                if (!(d < 3.15f)) continue;
+                DetonateSpikedBomb(bomb);
+                return;
             }
         }
 
@@ -511,13 +510,11 @@ public class BowserBossController : MonoBehaviour
         arc.y += Mathf.Sin(t * Mathf.PI) * 7.5f;
         transform.position = arc;
 
-        if (t >= 1f)
-        {
-            transform.position = arenaCenter;
-            SpawnShockwaveRing(arenaCenter, 8.0f, damageHero: false);
-            if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
-            EnterState(BossState.Stalking, "WalkStomp");
-        }
+        if (!(t >= 1f)) return;
+        transform.position = arenaCenter;
+        SpawnShockwaveRing(arenaCenter, 8.0f, damageHero: false);
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
+        EnterState(BossState.Stalking, "WalkStomp");
     }
 
     private void DetonateSpikedBomb(GameObject bomb)
@@ -636,18 +633,15 @@ public class BowserBossController : MonoBehaviour
                 continue;
             }
 
-            if (fb.Life <= 0f)
-            {
-                Destroy(fb.Go);
-                _activeFireballs.RemoveAt(i);
-            }
+            if (!(fb.Life <= 0f)) continue;
+            Destroy(fb.Go);
+            _activeFireballs.RemoveAt(i);
         }
     }
 
     private void ClearActiveFireballs()
     {
-        foreach (var fb in _activeFireballs)
-            if (fb.Go != null) Destroy(fb.Go);
+        foreach (var fb in _activeFireballs.Where(fb => fb.Go != null)) Destroy(fb.Go);
         _activeFireballs.Clear();
     }
 
@@ -656,11 +650,12 @@ public class BowserBossController : MonoBehaviour
         StartCoroutine(ShockwaveExpandRoutine(center, maxRadius, damageHero));
     }
 
-    private static Mesh _shockRingMesh;
+    private static Mesh shockRingMesh;
+    private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
 
     private static Mesh GetShockwaveRingMesh()
     {
-        if (_shockRingMesh != null) return _shockRingMesh;
+        if (shockRingMesh != null) return shockRingMesh;
         const int segs = 36;
         const float innerR = 0.88f;
         const float outerR = 1.00f;
@@ -668,26 +663,26 @@ public class BowserBossController : MonoBehaviour
         var verts = new Vector3[segs * 4];
         var normals = new Vector3[segs * 4];
         var tris = new int[segs * 6];
-        for (int i = 0; i < segs; i++)
+        for (var i = 0; i < segs; i++)
         {
-            float a0 = (i / (float)segs) * Mathf.PI * 2f;
-            float a1 = ((i + 1) / (float)segs) * Mathf.PI * 2f;
-            int v = i * 4;
+            var a0 = (i / (float)segs) * Mathf.PI * 2f;
+            var a1 = ((i + 1) / (float)segs) * Mathf.PI * 2f;
+            var v = i * 4;
             verts[v + 0] = new Vector3(Mathf.Cos(a0) * innerR, h, Mathf.Sin(a0) * innerR);
             verts[v + 1] = new Vector3(Mathf.Cos(a0) * outerR, h, Mathf.Sin(a0) * outerR);
             verts[v + 2] = new Vector3(Mathf.Cos(a1) * outerR, h, Mathf.Sin(a1) * outerR);
             verts[v + 3] = new Vector3(Mathf.Cos(a1) * innerR, h, Mathf.Sin(a1) * innerR);
             normals[v + 0] = normals[v + 1] = normals[v + 2] = normals[v + 3] = Vector3.up;
-            int t = i * 6;
+            var t = i * 6;
             tris[t + 0] = v + 0; tris[t + 1] = v + 2; tris[t + 2] = v + 1;
             tris[t + 3] = v + 0; tris[t + 4] = v + 3; tris[t + 5] = v + 2;
         }
-        _shockRingMesh = new Mesh { name = "BowserShockwaveHollowRingMesh" };
-        _shockRingMesh.SetVertices(verts);
-        _shockRingMesh.SetNormals(normals);
-        _shockRingMesh.SetTriangles(tris, 0);
-        _shockRingMesh.RecalculateBounds();
-        return _shockRingMesh;
+        shockRingMesh = new Mesh { name = "BowserShockwaveHollowRingMesh" };
+        shockRingMesh.SetVertices(verts);
+        shockRingMesh.SetNormals(normals);
+        shockRingMesh.SetTriangles(tris, 0);
+        shockRingMesh.RecalculateBounds();
+        return shockRingMesh;
     }
 
     private IEnumerator ShockwaveExpandRoutine(Vector3 center, float maxRadius, bool damageHero)
@@ -730,12 +725,10 @@ public class BowserBossController : MonoBehaviour
         var dx = p.x - arenaCenter.x;
         var dz = p.z - arenaCenter.z;
         var dist = Mathf.Sqrt(dx * dx + dz * dz);
-        if (dist > maxR && dist > 0.001f)
-        {
-            var scale = maxR / dist;
-            p.x = arenaCenter.x + dx * scale;
-            p.z = arenaCenter.z + dz * scale;
-        }
+        if (!(dist > maxR) || !(dist > 0.001f)) return p;
+        var scale = maxR / dist;
+        p.x = arenaCenter.x + dx * scale;
+        p.z = arenaCenter.z + dz * scale;
         return p;
     }
 

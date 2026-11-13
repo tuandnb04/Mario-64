@@ -229,8 +229,8 @@ public class WhompFortressElement : MonoBehaviour
         if (dist < 1.85f)
         {
             Vector3 dest;
-            bool primaryPending = primaryTargetStar != null && !primaryTargetStar.IsCollected;
-            bool secondaryPending = secondaryTargetStar != null && !secondaryTargetStar.IsCollected;
+            var primaryPending = primaryTargetStar != null && !primaryTargetStar.IsCollected;
+            var secondaryPending = secondaryTargetStar != null && !secondaryTargetStar.IsCollected;
 
             if (primaryTargetStar != null || secondaryTargetStar != null)
             {

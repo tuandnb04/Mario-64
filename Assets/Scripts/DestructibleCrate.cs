@@ -1,10 +1,4 @@
-using System;
-using System.Collections.Generic;
-using Mario64Remake;
-using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
-using UnityEngine.UI;
 
 /// <summary>
 /// Smashable crate / block for punches, kicks, rolls, spin attacks, dives, and ground pounds.
@@ -66,10 +60,9 @@ public class DestructibleCrate : MonoBehaviour
             foreach (var c in _colliders)
                 if (c != null) c.enabled = active;
         }
-        if (_renderers != null)
-        {
-            foreach (var r in _renderers)
-                if (r != null) r.enabled = active;
-        }
+
+        if (_renderers == null) return;
+        foreach (var r in _renderers)
+            if (r != null) r.enabled = active;
     }
 }

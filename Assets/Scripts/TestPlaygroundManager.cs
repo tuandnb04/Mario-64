@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Mario64Remake;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -80,22 +79,20 @@ public class TestPlaygroundManager : MonoBehaviour
     private void WireZoneButtons()
     {
         if (zones == null) return;
-        for (int i = 0; i < zones.Length; i++)
+        for (var i = 0; i < zones.Length; i++)
         {
             var tf = transform.Find($"TestHUDRoot/ZoneBar/ZoneBtn_{i}");
             if (tf == null) continue;
             var btn = tf.GetComponent<Button>();
             if (btn == null) continue;
-            int idx = i;
+            var idx = i;
             btn.onClick.RemoveAllListeners();
             btn.onClick.AddListener(() => TeleportToZone(idx));
         }
         var rstTf = transform.Find("TestHUDRoot/ZoneBar/ZoneBtn_Reset");
-        if (rstTf != null && rstTf.TryGetComponent<Button>(out var rBtn))
-        {
-            rBtn.onClick.RemoveAllListeners();
-            rBtn.onClick.AddListener(ResetPlaygroundEnvironment);
-        }
+        if (rstTf == null || !rstTf.TryGetComponent<Button>(out var rBtn)) return;
+        rBtn.onClick.RemoveAllListeners();
+        rBtn.onClick.AddListener(ResetPlaygroundEnvironment);
     }
 
     private void Update()
@@ -118,20 +115,18 @@ public class TestPlaygroundManager : MonoBehaviour
             else if (kb.digit0Key.wasPressedThisFrame) ResetPlaygroundEnvironment();
         }
 
-        if (hero != null)
+        if (hero == null) return;
+        if (!_camTrackInit)
         {
-            if (!_camTrackInit)
-            {
-                _prevCamYaw = hero.CurrentCameraYaw;
-                _camTrackInit = true;
-            }
-            if (Mathf.Abs(Mathf.DeltaAngle(_prevCamYaw, hero.CurrentCameraYaw)) > 8f)
-            {
-                RecordMove("FreeCameraOrbit");
-                _prevCamYaw = hero.CurrentCameraYaw;
-            }
-            RefreshTelemetryUI();
+            _prevCamYaw = hero.CurrentCameraYaw;
+            _camTrackInit = true;
         }
+        if (Mathf.Abs(Mathf.DeltaAngle(_prevCamYaw, hero.CurrentCameraYaw)) > 8f)
+        {
+            RecordMove("FreeCameraOrbit");
+            _prevCamYaw = hero.CurrentCameraYaw;
+        }
+        RefreshTelemetryUI();
     }
 
     private void RefreshTelemetryUI()
@@ -141,26 +136,24 @@ public class TestPlaygroundManager : MonoBehaviour
 
         if (telemetryText != null)
         {
-            string camMode = hero.IsFirstPersonLooking ? "1ST-PERSON (C-UP)" : (Cursor.lockState == CursorLockMode.Locked ? "FREE 360° [MOUSE LOCKED]" : "FREE 360° [CLICK/DRAG]");
+            var camMode = hero.IsFirstPersonLooking ? "1ST-PERSON (C-UP)" : (Cursor.lockState == CursorLockMode.Locked ? "FREE 360° [MOUSE LOCKED]" : "FREE 360° [CLICK/DRAG]");
             telemetryText.text =
                 $"<b>SM64 + ODYSSEY SANDBOX GYM</b>  |  State: <color=#FFD93D>{hero.CurrentStateLabel}</color>\n" +
                 $"Speed: {hero.CurrentPlanarSpeed:F1} m/s  |  VertY: {hero.CurrentVerticalSpeed:F1}  |  Slope: {hero.CurrentGroundAngle:F0}°  |  Cam: {camMode}\n" +
                 $"<b>Controls:</b> WASD Move | Mouse Free Orbit (Tab Unlock, V 1st-Person, Scroll Zoom) | Space Jump/WallKick | C Crouch/GP | Shift/C+E Roll | Z Spin | E/R-Click Dive | F/L-Click Punch/Carry/Throw | Keys 1-9 Teleport | 0 Reset";
         }
 
-        if (checklistText != null)
+        if (checklistText == null) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"<b>MOVES TESTED ({_achievedMoves.Count}/{ChecklistOrder.Length}):</b>");
+        for (var i = 0; i < ChecklistOrder.Length; i++)
         {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"<b>MOVES TESTED ({_achievedMoves.Count}/{ChecklistOrder.Length}):</b>");
-            for (int i = 0; i < ChecklistOrder.Length; i++)
-            {
-                string key = ChecklistOrder[i];
-                bool ok = _achievedMoves.Contains(key);
-                sb.Append(ok ? $"<color=#6BCB77>[OK] {key}</color>" : $"<color=#C0C8D8>[ ] {key}</color>");
-                if (i % 2 == 1) sb.AppendLine();
-                else sb.Append("   ");
-            }
-            checklistText.text = sb.ToString();
+            var key = ChecklistOrder[i];
+            var ok = _achievedMoves.Contains(key);
+            sb.Append(ok ? $"<color=#6BCB77>[OK] {key}</color>" : $"<color=#C0C8D8>[ ] {key}</color>");
+            if (i % 2 == 1) sb.AppendLine();
+            else sb.Append("   ");
         }
+        checklistText.text = sb.ToString();
     }
 }

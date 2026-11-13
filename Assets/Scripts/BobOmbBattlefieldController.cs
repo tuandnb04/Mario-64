@@ -222,7 +222,7 @@ public class BobOmbBattlefieldController : MonoBehaviour
         // Combat Checks: Behind-back Grab (F) or Jump-Stomp / Ground-Pound / Attack
         if (_invulnTimer > 0f || hero == null) return;
 
-        var dist3d = Vector3.Distance(hero.transform.position, transform.position);
+        var dist3D = Vector3.Distance(hero.transform.position, transform.position);
         var heroFromKing = hero.transform.position - transform.position;
         heroFromKing.y = 0f;
         var dotFront = heroFromKing.sqrMagnitude > 0.01f
@@ -230,25 +230,27 @@ public class BobOmbBattlefieldController : MonoBehaviour
             : 1f;
 
         var grabPressed = Keyboard.current != null && Keyboard.current.fKey.wasPressedThisFrame;
-        if (dist3d < 3.4f && dotFront < 0.2f && grabPressed)
+        switch (dist3D)
         {
-            _kingGrabTimer = 0.55f;
-            if (GameAudio.Instance != null) GameAudio.Instance.PlayLedgeClimbSound();
-            return;
+            case < 3.4f when dotFront < 0.2f && grabPressed:
+            {
+                _kingGrabTimer = 0.55f;
+                if (GameAudio.Instance != null) GameAudio.Instance.PlayLedgeClimbSound();
+                return;
+            }
+            case < 3.4f when (hero.transform.position.y > transform.position.y + 0.55f || hero.IsAttackingOrSliding):
+            {
+                RegisterHitOnElement();
+                if (hero.IsStompingDown) hero.BounceUpFromStomp(1.85f);
+                return;
+            }
         }
 
-        if (dist3d < 3.4f && (hero.transform.position.y > transform.position.y + 0.55f || hero.IsAttackingOrSliding))
-        {
-            RegisterHitOnElement();
-            if (hero.IsStompingDown) hero.BounceUpFromStomp(1.85f);
-            return;
-        }
-
-        if (flatDistToHero < 2.15f && dotFront > 0.55f && Mathf.Abs(hero.transform.position.y - transform.position.y) < 2.2f && _kingFrontBumpCooldown <= 0f)
-        {
-            _kingFrontBumpCooldown = 1.35f;
-            hero.TakeDamage(1, transform.position);
-        }
+        if (!(flatDistToHero < 2.15f) || !(dotFront > 0.55f) ||
+            !(Mathf.Abs(hero.transform.position.y - transform.position.y) < 2.2f) ||
+            !(_kingFrontBumpCooldown <= 0f)) return;
+        _kingFrontBumpCooldown = 1.35f;
+        hero.TakeDamage(1, transform.position);
     }
 
     public void RegisterHitOnElement()
@@ -328,9 +330,9 @@ public class BobOmbBattlefieldController : MonoBehaviour
             const float chainMaxRadius = 6.2f;
             var restWorld = transform.TransformPoint(_chompRestLocalPos);
 
-            var targetWorld = restWorld;
+            Vector3 targetWorld;
             var pitch = Mathf.Sin(_clock * 5f) * -8f;
-            var yawLook = visualSubTarget.rotation;
+            Quaternion yawLook;
 
             var flatDistFromStake = hero != null
                 ? Vector2.Distance(new Vector2(hero.transform.position.x, hero.transform.position.z), new Vector2(transform.position.x, transform.position.z))
@@ -348,32 +350,37 @@ public class BobOmbBattlefieldController : MonoBehaviour
                 var lungeEndWorld = transform.position + dirToHero * chainMaxRadius + Vector3.up * Mathf.Max(1.35f, _chompRestLocalPos.y);
                 var restTargetWorld = transform.position + dirToHero * 3.1f + Vector3.up * Mathf.Max(1.25f, _chompRestLocalPos.y);
 
-                if (phase < 0.45f)
+                switch (phase)
                 {
-                    // Telegraph hop + bark
-                    var u = phase / 0.45f;
-                    targetWorld = Vector3.Lerp(visualSubTarget.position, restTargetWorld + Vector3.up * (Mathf.Sin(u * Mathf.PI) * 0.7f), 10f * dt);
-                    pitch = -18f * Mathf.Sin(u * Mathf.PI);
-                }
-                else if (phase < 0.85f)
-                {
-                    // Aggressive straight-line lunge at Mario until chain pulls taut!
-                    var u = (phase - 0.45f) / 0.40f;
-                    targetWorld = Vector3.Lerp(restTargetWorld, lungeEndWorld, Ease.OutCubic(u));
-                    targetWorld.y += Mathf.Sin(u * Mathf.PI) * 0.95f;
-                    pitch = 14f;
-                }
-                else if (phase < 1.35f)
-                {
-                    // Chain snaps taut & Chomp chomps
-                    targetWorld = lungeEndWorld;
-                    pitch = Mathf.Sin(phase * 32f) * 12f;
-                }
-                else
-                {
-                    // Yank back along chain toward stake
-                    var u = (phase - 1.35f) / 0.90f;
-                    targetWorld = Vector3.Lerp(lungeEndWorld, restTargetWorld, Mathf.SmoothStep(0f, 1f, u));
+                    case < 0.45f:
+                    {
+                        // Telegraph hop + bark
+                        var u = phase / 0.45f;
+                        targetWorld = Vector3.Lerp(visualSubTarget.position, restTargetWorld + Vector3.up * (Mathf.Sin(u * Mathf.PI) * 0.7f), 10f * dt);
+                        pitch = -18f * Mathf.Sin(u * Mathf.PI);
+                        break;
+                    }
+                    case < 0.85f:
+                    {
+                        // Aggressive straight-line lunge at Mario until chain pulls taut!
+                        var u = (phase - 0.45f) / 0.40f;
+                        targetWorld = Vector3.Lerp(restTargetWorld, lungeEndWorld, Ease.OutCubic(u));
+                        targetWorld.y += Mathf.Sin(u * Mathf.PI) * 0.95f;
+                        pitch = 14f;
+                        break;
+                    }
+                    case < 1.35f:
+                        // Chain snaps taut & Chomp chomps
+                        targetWorld = lungeEndWorld;
+                        pitch = Mathf.Sin(phase * 32f) * 12f;
+                        break;
+                    default:
+                    {
+                        // Yank back along chain toward stake
+                        var u = (phase - 1.35f) / 0.90f;
+                        targetWorld = Vector3.Lerp(lungeEndWorld, restTargetWorld, Mathf.SmoothStep(0f, 1f, u));
+                        break;
+                    }
                 }
             }
             else

@@ -389,10 +389,15 @@ public class WhompBossController : MonoBehaviour
                     continue;
                 }
 
-                var coin = new GameObject($"WhompDropCoin_{c + 1}");
-                coin.transform.position = coinPos;
-                coin.transform.localScale = new Vector3(0.65f, 0.07f, 0.65f);
-                coin.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
+                var coin = new GameObject($"WhompDropCoin_{c + 1}")
+                {
+                    transform =
+                    {
+                        position = coinPos,
+                        localScale = new Vector3(0.65f, 0.07f, 0.65f),
+                        rotation = Quaternion.Euler(0f, 0f, 90f)
+                    }
+                };
 
                 var mf = coin.AddComponent<MeshFilter>();
                 mf.sharedMesh = BuildFallbackDiscMesh();
@@ -418,27 +423,27 @@ public class WhompBossController : MonoBehaviour
         gameObject.SetActive(false);
     }
 
-    private static Mesh _fallbackDiscMesh;
+    private static Mesh fallbackDiscMesh;
     private static Mesh BuildFallbackDiscMesh()
     {
-        if (_fallbackDiscMesh != null) return _fallbackDiscMesh;
+        if (fallbackDiscMesh != null) return fallbackDiscMesh;
         const int sides = 16;
         var verts = new Vector3[sides * 2 + 2];
         var tris = new int[sides * 12];
         verts[0] = new Vector3(0f, 0.5f, 0f);
         verts[1] = new Vector3(0f, -0.5f, 0f);
-        for (int i = 0; i < sides; i++)
+        for (var i = 0; i < sides; i++)
         {
-            float a = (i / (float)sides) * Mathf.PI * 2f;
-            float x = Mathf.Cos(a) * 0.5f;
-            float z = Mathf.Sin(a) * 0.5f;
+            var a = (i / (float)sides) * Mathf.PI * 2f;
+            var x = Mathf.Cos(a) * 0.5f;
+            var z = Mathf.Sin(a) * 0.5f;
             verts[2 + i] = new Vector3(x, 0.5f, z);
             verts[2 + sides + i] = new Vector3(x, -0.5f, z);
         }
-        int ti = 0;
-        for (int i = 0; i < sides; i++)
+        var ti = 0;
+        for (var i = 0; i < sides; i++)
         {
-            int next = (i + 1) % sides;
+            var next = (i + 1) % sides;
             int t0 = 2 + i, t1 = 2 + next;
             int b0 = 2 + sides + i, b1 = 2 + sides + next;
             tris[ti++] = 0; tris[ti++] = t1; tris[ti++] = t0;
@@ -446,10 +451,10 @@ public class WhompBossController : MonoBehaviour
             tris[ti++] = t0; tris[ti++] = t1; tris[ti++] = b1;
             tris[ti++] = t0; tris[ti++] = b1; tris[ti++] = b0;
         }
-        _fallbackDiscMesh = new Mesh { name = "WhompCoinFallback" };
-        _fallbackDiscMesh.SetVertices(verts);
-        _fallbackDiscMesh.SetTriangles(tris, 0);
-        _fallbackDiscMesh.RecalculateNormals();
-        return _fallbackDiscMesh;
+        fallbackDiscMesh = new Mesh { name = "WhompCoinFallback" };
+        fallbackDiscMesh.SetVertices(verts);
+        fallbackDiscMesh.SetTriangles(tris, 0);
+        fallbackDiscMesh.RecalculateNormals();
+        return fallbackDiscMesh;
     }
 }

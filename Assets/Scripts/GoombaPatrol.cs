@@ -1,4 +1,6 @@
+using System;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 /// <summary>
 /// Classic SM64 Goomba AI:
@@ -88,11 +90,9 @@ public class GoombaPatrol : MonoBehaviour
 
         if (_defeated)
         {
-            if (respawnInPlayground)
-            {
-                _respawnTimer -= dt;
-                if (_respawnTimer <= 0f) ResetGoomba();
-            }
+            if (!respawnInPlayground) return;
+            _respawnTimer -= dt;
+            if (_respawnTimer <= 0f) ResetGoomba();
             return;
         }
 
@@ -117,24 +117,25 @@ public class GoombaPatrol : MonoBehaviour
             case AiState.KickFly:
                 UpdateKickFly(dt);
                 return;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
 
-        if (hero != null && Vector3.Distance(hero.transform.position + Vector3.up * 0.45f, transform.position + Vector3.up * 0.45f) < 1.15f)
+        if (hero == null || !(Vector3.Distance(hero.transform.position + Vector3.up * 0.45f,
+                transform.position + Vector3.up * 0.45f) < 1.15f)) return;
+        var isStomp = hero.IsStompingDown && hero.transform.position.y >= _currentGroundY + 0.35f;
+        if (isStomp)
         {
-            var isStomp = hero.IsStompingDown && hero.transform.position.y >= _currentGroundY + 0.35f;
-            if (isStomp)
-            {
-                hero.BounceUpFromStomp(1.75f);
-                TriggerSquishDefeat();
-            }
-            else if (hero.IsAttackingOrSliding)
-            {
-                TriggerKickDefeat(hero.transform.position);
-            }
-            else
-            {
-                hero.TakeDamage(1, transform.position);
-            }
+            hero.BounceUpFromStomp(1.75f);
+            TriggerSquishDefeat();
+        }
+        else if (hero.IsAttackingOrSliding)
+        {
+            TriggerKickDefeat(hero.transform.position);
+        }
+        else
+        {
+            hero.TakeDamage(1, transform.position);
         }
     }
 
@@ -152,12 +153,10 @@ public class GoombaPatrol : MonoBehaviour
 
         MoveWithGroundCheck(toTarget, 1.9f * patrolSpeed, 9.5f, dt);
 
-        if (CanDetectHero(hero, detectRange))
-        {
-            _state = AiState.AlertHop;
-            _stateTimer = 0f;
-            if (GameAudio.Instance != null) GameAudio.Instance.PlayPickupBlip(-0.15f);
-        }
+        if (!CanDetectHero(hero, detectRange)) return;
+        _state = AiState.AlertHop;
+        _stateTimer = 0f;
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayPickupBlip(-0.15f);
     }
 
     private void UpdateAlertHop(MarioRemakeController hero, float dt)
@@ -177,12 +176,10 @@ public class GoombaPatrol : MonoBehaviour
         transform.position = new Vector3(transform.position.x, _currentGroundY + hop, transform.position.z);
         transform.localScale = new Vector3(1f - hop * 0.25f, 1f + hop * 0.45f, 1f - hop * 0.25f);
 
-        if (t >= 1f)
-        {
-            transform.localScale = Vector3.one;
-            _state = AiState.Chase;
-            _stateTimer = 0f;
-        }
+        if (!(t >= 1f)) return;
+        transform.localScale = Vector3.one;
+        _state = AiState.Chase;
+        _stateTimer = 0f;
     }
 
     private void UpdateChase(MarioRemakeController hero, float dt)
@@ -287,13 +284,11 @@ public class GoombaPatrol : MonoBehaviour
         AwardDefeatRewards();
     }
 
-    private void AwardDefeatRewards()
+    private static void AwardDefeatRewards()
     {
-        if (GameManager.Instance != null)
-        {
-            GameManager.Instance.coinsCollected += 1;
-            GameManager.Instance.TriggerHitStop(0.03f);
-        }
+        if (GameManager.Instance == null) return;
+        GameManager.Instance.coinsCollected += 1;
+        GameManager.Instance.TriggerHitStop(0.03f);
     }
 
     private void UpdateSquished()
@@ -323,7 +318,7 @@ public class GoombaPatrol : MonoBehaviour
     {
         if (_colliders != null)
             foreach (var c in _colliders) if (c != null) c.enabled = active;
-        if (_renderers != null)
-            foreach (var r in _renderers) if (r != null) r.enabled = active;
+        if (_renderers == null) return;
+        foreach (var r in _renderers) if (r != null) r.enabled = active;
     }
 }

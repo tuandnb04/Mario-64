@@ -146,24 +146,20 @@ public static class UISpriteFactory
         return sp;
     }
 
-    private static Dictionary<string, Sprite> _sm64dsSprites;
+    private static Dictionary<string, Sprite> sm64DSSprites;
 
     private static Sprite TryLoadSm64DsSprite(string spriteName)
     {
-        if (_sm64dsSprites == null)
+        if (sm64DSSprites != null) return sm64DSSprites.GetValueOrDefault(spriteName);
+        sm64DSSprites = new Dictionary<string, Sprite>();
+        var all = Resources.LoadAll<Sprite>("Sprites/SM64DS_HUD");
+        if (all == null) return sm64DSSprites.GetValueOrDefault(spriteName);
+        foreach (var sp in all)
         {
-            _sm64dsSprites = new Dictionary<string, Sprite>();
-            var all = Resources.LoadAll<Sprite>("Sprites/SM64DS_HUD");
-            if (all != null)
-            {
-                foreach (var sp in all)
-                {
-                    if (sp != null && !_sm64dsSprites.ContainsKey(sp.name))
-                        _sm64dsSprites[sp.name] = sp;
-                }
-            }
+            if (sp != null)
+                sm64DSSprites.TryAdd(sp.name, sp);
         }
-        return _sm64dsSprites.TryGetValue(spriteName, out var found) ? found : null;
+        return sm64DSSprites.GetValueOrDefault(spriteName);
     }
 
     public static Sprite GetKeyIcon(bool gold = true)

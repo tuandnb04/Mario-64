@@ -59,7 +59,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 0}
+  - {fileID: 2100000, guid: 29a76832cbb031a49adcde42c6453d24, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -2663,7 +2663,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 0}
+  - {fileID: 2100000, guid: 66b38235ce74ed94680388b3ff57dd8f, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -2713,7 +2713,7 @@ MonoBehaviour:
       m_Offset: {x: 0, y: 0}
       m_Rotation: 0
       m_Anchor: 9
-    m_Material: {fileID: 0}
+    m_Material: {fileID: 2100000, guid: 66b38235ce74ed94680388b3ff57dd8f, type: 2}
     m_SubmeshIndex: 0
     m_ManualUV: 0
     elementGroup: -1
@@ -2730,7 +2730,7 @@ MonoBehaviour:
       m_Offset: {x: 0, y: 0}
       m_Rotation: 0
       m_Anchor: 9
-    m_Material: {fileID: 0}
+    m_Material: {fileID: 2100000, guid: 66b38235ce74ed94680388b3ff57dd8f, type: 2}
     m_SubmeshIndex: 0
     m_ManualUV: 0
     elementGroup: -1
@@ -2747,7 +2747,7 @@ MonoBehaviour:
       m_Offset: {x: 0, y: 0}
       m_Rotation: 0
       m_Anchor: 9
-    m_Material: {fileID: 0}
+    m_Material: {fileID: 2100000, guid: 66b38235ce74ed94680388b3ff57dd8f, type: 2}
     m_SubmeshIndex: 0
     m_ManualUV: 0
     elementGroup: -1
@@ -2764,7 +2764,7 @@ MonoBehaviour:
       m_Offset: {x: 0, y: 0}
       m_Rotation: 0
       m_Anchor: 9
-    m_Material: {fileID: 0}
+    m_Material: {fileID: 2100000, guid: 66b38235ce74ed94680388b3ff57dd8f, type: 2}
     m_SubmeshIndex: 0
     m_ManualUV: 0
     elementGroup: -1
@@ -2781,7 +2781,7 @@ MonoBehaviour:
       m_Offset: {x: 0, y: 0}
       m_Rotation: 0
       m_Anchor: 9
-    m_Material: {fileID: 0}
+    m_Material: {fileID: 2100000, guid: 66b38235ce74ed94680388b3ff57dd8f, type: 2}
     m_SubmeshIndex: 0
     m_ManualUV: 0
     elementGroup: -1
@@ -2798,7 +2798,7 @@ MonoBehaviour:
       m_Offset: {x: 0, y: 0}
       m_Rotation: 0
       m_Anchor: 9
-    m_Material: {fileID: 0}
+    m_Material: {fileID: 2100000, guid: 66b38235ce74ed94680388b3ff57dd8f, type: 2}
     m_SubmeshIndex: 0
     m_ManualUV: 0
     elementGroup: -1

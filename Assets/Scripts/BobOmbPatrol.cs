@@ -1,5 +1,7 @@
+using System;
 using UnityEngine;
 using UnityEngine.Serialization;
+using Random = UnityEngine.Random;
 
 /// <summary>
 /// Authentic SM64 Bob-omb AI:
@@ -10,6 +12,10 @@ using UnityEngine.Serialization;
 /// </summary>
 public class BobOmbPatrol : MonoBehaviour
 {
+    private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
+    private static readonly int Color1 = Shader.PropertyToID("_Color");
+    private static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
+
     private enum BombAiState
     {
         Patrol,
@@ -127,11 +133,9 @@ public class BobOmbPatrol : MonoBehaviour
 
         if (_exploded)
         {
-            if (respawnAfterExplode)
-            {
-                _respawnTimer -= dt;
-                if (_respawnTimer <= 0f) ResetBobOmb();
-            }
+            if (!respawnAfterExplode) return;
+            _respawnTimer -= dt;
+            if (_respawnTimer <= 0f) ResetBobOmb();
             return;
         }
 
@@ -149,6 +153,8 @@ public class BobOmbPatrol : MonoBehaviour
             case BombAiState.ChaseFuse:
                 UpdateChaseFuse(hero, dt);
                 break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
     }
 
@@ -167,12 +173,10 @@ public class BobOmbPatrol : MonoBehaviour
 
         StepToward(toTarget, 1.85f * patrolSpeed, 8f, 180f, dt);
 
-        if (CanSpotHero(hero))
-        {
-            _state = BombAiState.AlertHop;
-            _alertElapsed = 0f;
-            if (GameAudio.Instance != null) GameAudio.Instance.PlayPickupBlip(0.15f);
-        }
+        if (!CanSpotHero(hero)) return;
+        _state = BombAiState.AlertHop;
+        _alertElapsed = 0f;
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayPickupBlip(0.15f);
     }
 
     private void UpdateAlertHop(MarioRemakeController hero, float dt)
@@ -190,11 +194,9 @@ public class BobOmbPatrol : MonoBehaviour
         transform.position = new Vector3(transform.position.x, _groundY + hop, transform.position.z);
         if (windupKey != null) windupKey.Rotate(0f, 0f, 420f * dt, Space.Self);
 
-        if (t >= 1f)
-        {
-            _state = BombAiState.ChaseFuse;
-            _fuseElapsed = 0f;
-        }
+        if (!(t >= 1f)) return;
+        _state = BombAiState.ChaseFuse;
+        _fuseElapsed = 0f;
     }
 
     private void UpdateChaseFuse(MarioRemakeController hero, float dt)
@@ -288,9 +290,9 @@ public class BobOmbPatrol : MonoBehaviour
     {
         if (_bodyRenderer == null || _mpb == null) return;
         var c = Color.Lerp(_origBodyColor, new Color(1.0f, 0.25f, 0.05f, 1f), flash01);
-        _mpb.SetColor("_BaseColor", c);
-        _mpb.SetColor("_Color", c);
-        _mpb.SetColor("_EmissionColor", new Color(1.0f, 0.35f, 0.05f) * (flash01 * 1.6f));
+        _mpb.SetColor(BaseColor, c);
+        _mpb.SetColor(Color1, c);
+        _mpb.SetColor(EmissionColor, new Color(1.0f, 0.35f, 0.05f) * (flash01 * 1.6f));
         _bodyRenderer.SetPropertyBlock(_mpb);
     }
 
@@ -334,7 +336,7 @@ public class BobOmbPatrol : MonoBehaviour
     {
         if (_colliders != null)
             foreach (var c in _colliders) if (c != null) c.enabled = active;
-        if (_renderers != null)
-            foreach (var r in _renderers) if (r != null) r.enabled = active;
+        if (_renderers == null) return;
+        foreach (var r in _renderers) if (r != null) r.enabled = active;
     }
 }

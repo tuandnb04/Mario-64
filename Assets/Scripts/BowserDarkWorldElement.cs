@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using Mario64Remake;
 using UnityEngine;
 
 namespace Mario64Remake
@@ -28,7 +30,8 @@ namespace Mario64Remake
 /// </summary>
 public class BowserDarkWorldElement : MonoBehaviour
 {
-    public Mario64Remake.DarkWorldHazardType hazardType = Mario64Remake.DarkWorldHazardType.TiltingSeesawBridge;
+    private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
+    public DarkWorldHazardType hazardType = DarkWorldHazardType.TiltingSeesawBridge;
 
     [Header("Motion / Timing")]
     public Vector3 moveOffset = new(0f, 0f, 6f);
@@ -53,7 +56,7 @@ public class BowserDarkWorldElement : MonoBehaviour
 
     [Header("Warp Pipe Arena Transfer")]
     public Vector3 warpDestination = new(0f, 34.8f, 105.5f);
-    public float warpFacingYaw = 0f;
+    public float warpFacingYaw;
     public BowserBossController arenaBoss;
 
     private Vector3 _originPos;
@@ -71,13 +74,24 @@ public class BowserDarkWorldElement : MonoBehaviour
         _originPos = transform.position;
         _originRot = transform.rotation;
         _originScale = transform.localScale;
-        if (hazardType == Mario64Remake.DarkWorldHazardType.SwitchTimedStairStep)
+        switch (hazardType)
         {
-            ApplyStepVisibility(false);
-        }
-        else if (hazardType == Mario64Remake.DarkWorldHazardType.FlameJetNozzle && flameColumnVisual != null)
-        {
-            flameColumnVisual.gameObject.SetActive(false);
+            case DarkWorldHazardType.SwitchTimedStairStep:
+                ApplyStepVisibility(false);
+                break;
+            case DarkWorldHazardType.FlameJetNozzle when flameColumnVisual != null:
+                flameColumnVisual.gameObject.SetActive(false);
+                break;
+            case DarkWorldHazardType.PurpleSwitchCrystal:
+            case DarkWorldHazardType.TiltingSeesawBridge:
+            case DarkWorldHazardType.MovingDiamondLift:
+            case DarkWorldHazardType.SlidingPusherBlock:
+            case DarkWorldHazardType.OrbitingAmp:
+            case DarkWorldHazardType.BowserWarpPipe:
+            case DarkWorldHazardType.FerrisWheelRotator:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
     }
 
@@ -90,13 +104,24 @@ public class BowserDarkWorldElement : MonoBehaviour
         _stepActivationTimer = 0f;
         _cooldown = 0f;
         _flameCurrentlyHot = false;
-        if (hazardType == Mario64Remake.DarkWorldHazardType.SwitchTimedStairStep)
+        switch (hazardType)
         {
-            ApplyStepVisibility(false);
-        }
-        else if (hazardType == Mario64Remake.DarkWorldHazardType.FlameJetNozzle && flameColumnVisual != null)
-        {
-            flameColumnVisual.gameObject.SetActive(false);
+            case DarkWorldHazardType.SwitchTimedStairStep:
+                ApplyStepVisibility(false);
+                break;
+            case DarkWorldHazardType.FlameJetNozzle when flameColumnVisual != null:
+                flameColumnVisual.gameObject.SetActive(false);
+                break;
+            case DarkWorldHazardType.PurpleSwitchCrystal:
+            case DarkWorldHazardType.TiltingSeesawBridge:
+            case DarkWorldHazardType.MovingDiamondLift:
+            case DarkWorldHazardType.SlidingPusherBlock:
+            case DarkWorldHazardType.OrbitingAmp:
+            case DarkWorldHazardType.BowserWarpPipe:
+            case DarkWorldHazardType.FerrisWheelRotator:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
         gameObject.SetActive(true);
     }
@@ -118,33 +143,35 @@ public class BowserDarkWorldElement : MonoBehaviour
 
         switch (hazardType)
         {
-            case Mario64Remake.DarkWorldHazardType.PurpleSwitchCrystal:
+            case DarkWorldHazardType.PurpleSwitchCrystal:
                 UpdatePurpleSwitch(dt);
                 break;
-            case Mario64Remake.DarkWorldHazardType.SwitchTimedStairStep:
+            case DarkWorldHazardType.SwitchTimedStairStep:
                 UpdateTimedStairStep(dt);
                 break;
-            case Mario64Remake.DarkWorldHazardType.TiltingSeesawBridge:
+            case DarkWorldHazardType.TiltingSeesawBridge:
                 UpdateTiltingSeesaw();
                 break;
-            case Mario64Remake.DarkWorldHazardType.MovingDiamondLift:
+            case DarkWorldHazardType.MovingDiamondLift:
                 UpdateMovingLift();
                 break;
-            case Mario64Remake.DarkWorldHazardType.SlidingPusherBlock:
+            case DarkWorldHazardType.SlidingPusherBlock:
                 UpdatePusherBlock();
                 break;
-            case Mario64Remake.DarkWorldHazardType.FlameJetNozzle:
+            case DarkWorldHazardType.FlameJetNozzle:
                 UpdateFlameJet(dt);
                 break;
-            case Mario64Remake.DarkWorldHazardType.OrbitingAmp:
+            case DarkWorldHazardType.OrbitingAmp:
                 UpdateOrbitingAmp(dt);
                 break;
-            case Mario64Remake.DarkWorldHazardType.BowserWarpPipe:
+            case DarkWorldHazardType.BowserWarpPipe:
                 UpdateWarpPipe();
                 break;
-            case Mario64Remake.DarkWorldHazardType.FerrisWheelRotator:
+            case DarkWorldHazardType.FerrisWheelRotator:
                 UpdateFerrisWheel(dt);
                 break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
     }
 
@@ -210,13 +237,13 @@ public class BowserDarkWorldElement : MonoBehaviour
         }
     }
 
-    public void ActivateStep(float delay)
+    private void ActivateStep(float delay)
     {
         _stepActive = true;
         _stepActivationTimer = delay;
     }
 
-    public void DeactivateStep()
+    private void DeactivateStep()
     {
         _stepActive = false;
         ApplyStepVisibility(false);
@@ -225,13 +252,11 @@ public class BowserDarkWorldElement : MonoBehaviour
     private void UpdateTimedStairStep(float dt)
     {
         if (!_stepActive) return;
-        if (_stepActivationTimer > 0f)
+        if (!(_stepActivationTimer > 0f)) return;
+        _stepActivationTimer -= dt;
+        if (_stepActivationTimer <= 0f)
         {
-            _stepActivationTimer -= dt;
-            if (_stepActivationTimer <= 0f)
-            {
-                ApplyStepVisibility(true);
-            }
+            ApplyStepVisibility(true);
         }
     }
 
@@ -274,8 +299,8 @@ public class BowserDarkWorldElement : MonoBehaviour
     {
         // 4.2s cycle: 0..2.0 cool, 2.0..2.6 warning ember, 2.6..4.2 blazing jet!
         var cycle = Mathf.Repeat(_clock + phaseOffset, 4.2f);
-        bool warning = cycle >= 1.95f && cycle < 2.55f;
-        bool firing = cycle >= 2.55f;
+        var warning = cycle is >= 1.95f and < 2.55f;
+        var firing = cycle >= 2.55f;
 
         _flameCurrentlyHot = firing;
 
@@ -294,9 +319,9 @@ public class BowserDarkWorldElement : MonoBehaviour
 
         if (nozzleGlowRenderer != null && nozzleGlowRenderer.material != null)
         {
-            Color glow = firing ? new Color(1.0f, 0.35f, 0.05f) : (warning ? new Color(0.85f, 0.45f, 0.05f) : new Color(0.15f, 0.08f, 0.08f));
-            if (nozzleGlowRenderer.material.HasProperty("_EmissionColor"))
-                nozzleGlowRenderer.material.SetColor("_EmissionColor", glow * (firing ? 2.4f : warning ? 1.2f : 0.15f));
+            var glow = firing ? new Color(1.0f, 0.35f, 0.05f) : (warning ? new Color(0.85f, 0.45f, 0.05f) : new Color(0.15f, 0.08f, 0.08f));
+            if (nozzleGlowRenderer.material.HasProperty(EmissionColor))
+                nozzleGlowRenderer.material.SetColor(EmissionColor, glow * (firing ? 2.4f : warning ? 1.2f : 0.15f));
         }
 
         if (!_flameCurrentlyHot || _cooldown > 0f) return;
@@ -307,11 +332,9 @@ public class BowserDarkWorldElement : MonoBehaviour
         var flameDir = flameColumnVisual != null ? (flameColumnVisual.position - transform.position).normalized : transform.up;
         if (flameDir.sqrMagnitude < 0.01f) flameDir = Vector3.up;
         var closest = transform.position + flameDir * Mathf.Clamp(Vector3.Dot(hero.transform.position - transform.position, flameDir), 0.3f, 3.6f);
-        if (Vector3.Distance(hero.transform.position + Vector3.up * 0.7f, closest) < 1.15f)
-        {
-            _cooldown = 0.85f;
-            hero.TakeDamage(1, transform.position);
-        }
+        if (!(Vector3.Distance(hero.transform.position + Vector3.up * 0.7f, closest) < 1.15f)) return;
+        _cooldown = 0.85f;
+        hero.TakeDamage(1, transform.position);
     }
 
     private void UpdateOrbitingAmp(float dt)
