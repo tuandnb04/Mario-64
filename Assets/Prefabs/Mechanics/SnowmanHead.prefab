@@ -7277,12 +7277,10 @@ MonoBehaviour:
   warpFacingYaw: 0
   triggerRadius: 2
   warpToastText: WARPING!
-  disableGravityDuringRace: 0
   waypoints: []
   shortcutCheckPos: {x: 0, y: 0, z: 0}
   finishLinePos: {x: 0, y: 0, z: 0}
   moveSpeed: 6.5
-  isImposterPenguin: 0
   aggroRadius: 14
   snowballPrefab: {fileID: 0}
   snowballMaterial: {fileID: 0}

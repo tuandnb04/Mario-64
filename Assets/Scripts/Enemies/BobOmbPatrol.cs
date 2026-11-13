@@ -10,8 +10,13 @@ using Random = UnityEngine.Random;
 ///    spins key rapidly, flashes urgent orange-red pulse on body, and detonates after fuse countdown!
 /// 3. Carriable / Thrown: Seamless integration with CarriableObject so Mario can Grab (F/Click) & Hurl Bob-ombs!
 /// </summary>
-public class BobOmbPatrol : MonoBehaviour
+public class BobOmbPatrol : MonoBehaviour, IImpactReceiver
 {
+    public void OnImpact(Vector3 impactOrigin, float distanceSq)
+    {
+        if (distanceSq < 2.6f * 2.6f)
+            OnMarioAttackHit();
+    }
     private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
     private static readonly int Color1 = Shader.PropertyToID("_Color");
     private static readonly int BaseColor = Shader.PropertyToID("_BaseColor");

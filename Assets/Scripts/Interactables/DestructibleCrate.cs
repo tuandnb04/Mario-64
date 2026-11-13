@@ -3,8 +3,13 @@ using UnityEngine;
 /// <summary>
 /// Smashable crate / block for punches, kicks, rolls, spin attacks, dives, and ground pounds.
 /// </summary>
-public class DestructibleCrate : MonoBehaviour
+public class DestructibleCrate : MonoBehaviour, IImpactReceiver
 {
+    public void OnImpact(Vector3 impactOrigin, float distanceSq)
+    {
+        if (distanceSq < 2.3f * 2.3f)
+            Smash(impactOrigin);
+    }
     public bool respawnAfterBreak = true;
     public float respawnDelay = 4.0f;
     public int rewardCoins = 1;

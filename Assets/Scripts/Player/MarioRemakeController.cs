@@ -931,8 +931,10 @@ public class MarioRemakeController : MonoBehaviour
             return false;
 
         var pos = transform.position;
-        foreach (var pole in FindObjectsByType<ClimbablePole>(FindObjectsInactive.Exclude))
+        var poles = ClimbablePole.ActivePoles;
+        for (int i = 0; i < poles.Count; i++)
         {
+            var pole = poles[i];
             if (pole == null || !pole.gameObject.activeInHierarchy) continue;
             var center = pole.transform.position;
             var toPoleXZ = new Vector3(center.x - pos.x, 0f, center.z - pos.z);

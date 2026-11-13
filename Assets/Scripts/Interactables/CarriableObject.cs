@@ -180,30 +180,21 @@ public class CarriableObject : MonoBehaviour
         }
     }
 
+    private static readonly Collider[] s_impactBuffer = new Collider[32];
+
     private void HandleImpactAt(Vector3 pos)
     {
-        // Smash nearby crates, enemies, and trigger bomb blasts
-        foreach (var crate in FindObjectsByType<DestructibleCrate>(FindObjectsInactive.Exclude))
+        // Smash nearby crates, enemies, and trigger bomb blasts using non-allocating physics overlap
+        int hitCount = Physics.OverlapSphereNonAlloc(pos, 3.4f, s_impactBuffer, ~0, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < hitCount; i++)
         {
-            if (crate != null && Vector3.Distance(crate.transform.position, pos) < 2.3f)
-                crate.Smash(pos);
-        }
-        foreach (var bob in FindObjectsByType<BobOmbPatrol>(FindObjectsInactive.Exclude))
-        {
-            if (bob != null && Vector3.Distance(bob.transform.position, pos) < 2.6f)
-                bob.OnMarioAttackHit();
-        }
-        foreach (var goomba in FindObjectsByType<GoombaPatrol>(FindObjectsInactive.Exclude))
-        {
-            if (goomba != null && Vector3.Distance(goomba.transform.position, pos) < 2.6f)
-                goomba.OnAttacked();
-        }
-        foreach (var wf in FindObjectsByType<WhompFortressElement>(FindObjectsInactive.Exclude))
-        {
-            if (wf != null && wf.hazardType == FortressHazardType.BreakawayBrickWall &&
-                Vector3.Distance(wf.transform.position, pos) < 3.4f)
+            var col = s_impactBuffer[i];
+            if (col == null) continue;
+
+            if (col.TryGetComponent<IImpactReceiver>(out var receiver))
             {
-                wf.ShatterBreakawayWall();
+                float distSq = (col.transform.position - pos).sqrMagnitude;
+                receiver.OnImpact(pos, distSq);
             }
         }
 

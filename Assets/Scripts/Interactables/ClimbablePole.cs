@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -5,11 +6,24 @@ using UnityEngine;
 /// </summary>
 public class ClimbablePole : MonoBehaviour
 {
+    public static readonly List<ClimbablePole> ActivePoles = new List<ClimbablePole>();
+
     public float poleRadius = 0.34f;
     public float grabRadius = 0.95f;
     public float bottomLocalY;
     public float topLocalY = 6.0f;
     public bool autoDetectBounds = true;
+
+    private void OnEnable()
+    {
+        if (!ActivePoles.Contains(this))
+            ActivePoles.Add(this);
+    }
+
+    private void OnDisable()
+    {
+        ActivePoles.Remove(this);
+    }
 
     private void Awake()
     {

@@ -10,8 +10,13 @@ using Random = UnityEngine.Random;
 /// 4. Defeat: Flattens like a pancake when Stomped / Ground-Pounded before bursting into +1 Coin,
 ///    or spins away when Punched / Kicked / Rolled!
 /// </summary>
-public class GoombaPatrol : MonoBehaviour
+public class GoombaPatrol : MonoBehaviour, IImpactReceiver
 {
+    public void OnImpact(Vector3 impactOrigin, float distanceSq)
+    {
+        if (distanceSq < 2.6f * 2.6f)
+            OnAttacked();
+    }
     private enum AiState
     {
         Patrol,

@@ -348,7 +348,7 @@ MonoBehaviour:
     m_AreaError: 15
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
-  m_Mesh: {fileID: -8007727721892269253}
+  m_Mesh: {fileID: -6919553732131240910}
   m_VersionIndex: 13
   m_IsSelectable: 1
   m_SelectedFaces: 
@@ -361,8 +361,8 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7457734697320696606}
-  m_Mesh: {fileID: -8007727721892269253}
---- !u!43 &-8007727721892269253
+  m_Mesh: {fileID: -6919553732131240910}
+--- !u!43 &-6919553732131240910
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}

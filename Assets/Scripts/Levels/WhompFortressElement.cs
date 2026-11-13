@@ -32,8 +32,13 @@ namespace Mario64Remake
 /// - BreakawayBrickWall: shatters when Mario blasts or dives into its corner, revealing Star 6 ("Blast Away the Wall")!
 /// - SleepingPiranha: gently breathes in and out while sleeping; if Mario attacks/Ground Pounds it, bursts into coins!
 /// </summary>
-public class WhompFortressElement : MonoBehaviour
+public class WhompFortressElement : MonoBehaviour, IImpactReceiver
 {
+    public void OnImpact(Vector3 impactOrigin, float distanceSq)
+    {
+        if (hazardType == FortressHazardType.BreakawayBrickWall)
+            ShatterBreakawayWall();
+    }
     public Mario64Remake.FortressHazardType hazardType = Mario64Remake.FortressHazardType.ShoveBlock;
     public Vector3 moveOffset = new(0f, 0f, 3.2f);
     public float cycleSpeed = 1.2f;
