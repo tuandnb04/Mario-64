@@ -11,11 +11,14 @@ public static class UISpriteFactory
 {
     private static Sprite roundedBadge;
     private static Sprite ringFrame;
+    private static Sprite courseMedallion;
     private static Sprite starIcon;
     private static Sprite yellowCoinIcon;
     private static Sprite redCoinIcon;
     private static Sprite marioCapIcon;
+    private static Sprite heartIcon;
     private static readonly Dictionary<int, Sprite> PieWedges = new();
+    private static readonly Dictionary<int, Sprite> OdysseyRingSegments = new();
 
     public static Sprite GetRoundedBadge()
     {
@@ -45,47 +48,98 @@ public static class UISpriteFactory
         const int size = 160;
         var tex = NewTex("SM64_PowerRing", size, size);
         const float center = (size - 1) * 0.5f;
-        const float outerR = size * 0.485f;
-        const float midR = size * 0.415f;
-        const float innerR = size * 0.18f;
+        const float baseOuterR = size * 0.435f;
+        const float midR = size * 0.345f;
 
         for (var y = 0; y < size; y++)
         {
             for (var x = 0; x < size; x++)
             {
-                var r = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
-                if (r > outerR + 1f)
+                var dx = x - center;
+                var dy = y - center;
+                var r = Mathf.Sqrt(dx * dx + dy * dy);
+                var angle = Mathf.Atan2(dy, dx);
+                // Scalloped cloud/cog silhouette like SM64DS golden Power Meter frame
+                var lobe = Mathf.Abs(Mathf.Sin(angle * 4f)) * (size * 0.042f);
+                var outerR = baseOuterR + lobe;
+
+                if (r > outerR + 1.2f)
                 {
                     tex.SetPixel(x, y, Color.clear);
                     continue;
                 }
 
-                var edgeAlpha = Mathf.Clamp01((outerR + 0.8f) - r);
-                switch (r)
+                var edgeAlpha = Mathf.Clamp01((outerR + 0.9f) - r);
+                if (r >= outerR - 4.2f)
                 {
-                    case >= midR:
-                    {
-                        // Iconic deep royal-blue metallic outer bezel ring with top sheen
-                        var highlight = Mathf.Clamp01((y - center) / outerR) * 0.28f;
-                        var rim = new Color(0.11f + highlight, 0.24f + highlight * 0.8f, 0.56f + highlight, edgeAlpha);
-                        tex.SetPixel(x, y, rim);
-                        break;
-                    }
-                    case <= innerR:
-                    {
-                        var hub = new Color(0.10f, 0.14f, 0.26f, 0.96f);
-                        tex.SetPixel(x, y, hub);
-                        break;
-                    }
-                    default:
-                        tex.SetPixel(x, y, new Color(0.06f, 0.09f, 0.17f, 0.88f));
-                        break;
+                    // Thick cartoon black outline
+                    tex.SetPixel(x, y, new Color(0.06f, 0.06f, 0.09f, edgeAlpha));
+                }
+                else if (r >= midR + 3.0f)
+                {
+                    // Warm golden-tan SM64DS bezel with top highlight
+                    var shade = Mathf.Clamp01(dy / outerR) * 0.16f;
+                    var gold = new Color(0.90f + shade * 0.5f, 0.70f + shade * 0.5f, 0.30f + shade * 0.3f, 1f);
+                    tex.SetPixel(x, y, gold);
+                }
+                else if (r >= midR)
+                {
+                    // Inner dark border separating bezel from blue wedges
+                    tex.SetPixel(x, y, new Color(0.07f, 0.08f, 0.12f, 1f));
+                }
+                else
+                {
+                    // Deep navy backing behind the 8 wedges
+                    tex.SetPixel(x, y, new Color(0.07f, 0.13f, 0.28f, 0.95f));
                 }
             }
         }
         tex.Apply();
         ringFrame = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
         return ringFrame;
+    }
+
+    public static Sprite GetCourseMedallionIcon()
+    {
+        if (courseMedallion != null) return courseMedallion;
+        const int size = 160;
+        var tex = NewTex("SM64_CourseMedallion", size, size);
+        const float center = (size - 1) * 0.5f;
+        const float outerR = size * 0.48f;
+        const float innerR = size * 0.25f;
+
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var dx = x - center;
+                var dy = y - center;
+                var r = Mathf.Sqrt(dx * dx + dy * dy);
+                if (r > outerR + 1.2f)
+                {
+                    tex.SetPixel(x, y, Color.clear);
+                    continue;
+                }
+
+                var edgeAlpha = Mathf.Clamp01((outerR + 0.9f) - r);
+                if (r >= outerR - 3.5f)
+                {
+                    tex.SetPixel(x, y, new Color(0.28f, 0.20f, 0.06f, edgeAlpha));
+                }
+                else if (r >= innerR)
+                {
+                    var sheen = Mathf.Clamp01((dy + dx * 0.4f) / outerR) * 0.18f;
+                    tex.SetPixel(x, y, new Color(0.78f + sheen, 0.62f + sheen * 0.8f, 0.20f + sheen * 0.4f, 1f));
+                }
+                else
+                {
+                    tex.SetPixel(x, y, new Color(0.28f, 0.21f, 0.08f, 1f));
+                }
+            }
+        }
+        tex.Apply();
+        courseMedallion = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        return courseMedallion;
     }
 
     /// <summary>
@@ -146,31 +200,102 @@ public static class UISpriteFactory
         return sp;
     }
 
-    private static Dictionary<string, Sprite> sm64DSSprites;
-
-    private static Sprite TryLoadSm64DsSprite(string spriteName)
+    public static Sprite GetOdysseyRingSegment(int segmentIndex)
     {
-        if (sm64DSSprites != null) return sm64DSSprites.GetValueOrDefault(spriteName);
-        sm64DSSprites = new Dictionary<string, Sprite>();
-        var all = Resources.LoadAll<Sprite>("Sprites/SM64DS_HUD");
-        if (all == null) return sm64DSSprites.GetValueOrDefault(spriteName);
-        foreach (var sp in all)
+        segmentIndex = ((segmentIndex % 8) + 8) % 8;
+        if (OdysseyRingSegments.TryGetValue(segmentIndex, out var existing) && existing != null) return existing;
+
+        const int size = 128;
+        var tex = NewTex($"Odyssey_RingSeg_{segmentIndex}", size, size);
+        const float center = (size - 1) * 0.5f;
+        const float rMin = size * 0.34f;
+        const float rMax = size * 0.455f;
+
+        var startDeg = segmentIndex * 45f + 4.2f;
+        var endDeg = (segmentIndex + 1) * 45f - 4.2f;
+
+        for (var y = 0; y < size; y++)
         {
-            if (sp != null)
-                sm64DSSprites.TryAdd(sp.name, sp);
+            for (var x = 0; x < size; x++)
+            {
+                var dx = x - center;
+                var dy = y - center;
+                var r = Mathf.Sqrt(dx * dx + dy * dy);
+                if (r is < rMin - 1.5f or > rMax + 1.5f)
+                {
+                    tex.SetPixel(x, y, Color.clear);
+                    continue;
+                }
+
+                var deg = Mathf.Atan2(dx, dy) * Mathf.Rad2Deg;
+                if (deg < 0f) deg += 360f;
+
+                var angMargin = Mathf.Min(deg - startDeg, endDeg - deg);
+                if (angMargin < -1.5f)
+                {
+                    tex.SetPixel(x, y, Color.clear);
+                    continue;
+                }
+
+                var radialAlpha = Mathf.Clamp01(Mathf.Min(r - rMin + 0.9f, rMax - r + 0.9f));
+                var angleAlpha = Mathf.Clamp01(angMargin * 1.2f + 0.9f);
+                var alpha = Mathf.Min(radialAlpha, angleAlpha);
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+            }
         }
-        return sm64DSSprites.GetValueOrDefault(spriteName);
+        tex.Apply();
+        var sp = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        OdysseyRingSegments[segmentIndex] = sp;
+        return sp;
+    }
+
+    public static Sprite GetHeartIcon()
+    {
+        if (heartIcon != null) return heartIcon;
+        const int size = 128;
+        var tex = NewTex("Odyssey_HeartIcon", size, size);
+        const float center = (size - 1) * 0.5f;
+        const float scale = size * 0.34f;
+
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var nx = Mathf.Abs((x - center) / scale);
+                var ny = ((y - center) + size * 0.045f) / scale;
+                var val = nx * nx + ny * ny - 1f;
+                var f = val * val * val - nx * nx * ny * ny * ny;
+
+                if (f <= 0f)
+                {
+                    tex.SetPixel(x, y, Color.white);
+                }
+                else if (f < 0.22f)
+                {
+                    var outlineAlpha = 1f - Mathf.Clamp01((f - 0.10f) / 0.12f);
+                    var col = Color.Lerp(Color.white, new Color(0.08f, 0.09f, 0.12f, 1f), Mathf.Clamp01(f / 0.08f));
+                    col.a = outlineAlpha;
+                    tex.SetPixel(x, y, col);
+                }
+                else
+                {
+                    tex.SetPixel(x, y, Color.clear);
+                }
+            }
+        }
+
+        tex.Apply();
+        heartIcon = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        return heartIcon;
     }
 
     public static Sprite GetKeyIcon(bool gold = true)
     {
-        return TryLoadSm64DsSprite(gold ? "GoldKey" : "SilverKey") ?? GetStarIcon();
+        return GetStarIcon();
     }
 
     public static Sprite GetStarIcon()
     {
-        var real = TryLoadSm64DsSprite("GoldStar");
-        if (real != null) return real;
         if (starIcon != null) return starIcon;
         const int size = 72;
         var tex = NewTex("SM64_StarIcon", size, size);
@@ -218,8 +343,6 @@ public static class UISpriteFactory
 
     public static Sprite GetCoinIcon(bool redCoin)
     {
-        var real = TryLoadSm64DsSprite(redCoin ? "RedCoin" : "TopGoldCoin");
-        if (real != null) return real;
         switch (redCoin)
         {
             case false when yellowCoinIcon != null:
@@ -266,8 +389,6 @@ public static class UISpriteFactory
 
     public static Sprite GetMarioCapIcon()
     {
-        var real = TryLoadSm64DsSprite("MarioHead") ?? TryLoadSm64DsSprite("MarioCap");
-        if (real != null) return real;
         if (marioCapIcon != null) return marioCapIcon;
         const int size = 64;
         var tex = NewTex("SM64_MarioCapIcon", size, size);

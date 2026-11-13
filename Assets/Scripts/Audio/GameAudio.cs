@@ -64,6 +64,7 @@ public class GameAudio : MonoBehaviour
     private AudioClip BowserRoarClip { get; set; }
     private AudioClip BowserBombClip { get; set; }
     private AudioClip ActionWhooshClip { get; set; }
+    private AudioClip SwitchTickClip { get; set; }
 
     private AudioSource AmbientSource { get; set; }
     private AudioSource SfxSource { get; set; }
@@ -127,6 +128,7 @@ public class GameAudio : MonoBehaviour
         BowserRoarClip = CreateBowserRoarClip(sr);
         BowserBombClip = CreateBowserBombExplosionClip(sr);
         ActionWhooshClip = CreateMenuBlip(sr, 280f, 540f, 0.09f);
+        SwitchTickClip = CreateSwitchTickClip(sr);
     }
 
     private void SetupSources()
@@ -252,6 +254,14 @@ public class GameAudio : MonoBehaviour
         SfxSource.pitch = Random.Range(0.97f, 1.03f);
         SfxSource.volume = CalculateSfxEffectiveVolume(0.7f);
         SfxSource.PlayOneShot(UIClickClip);
+    }
+
+    public void PlaySwitchTick(bool urgent = false)
+    {
+        if (SfxSource == null || SwitchTickClip == null) return;
+        SfxSource.pitch = urgent ? 1.26f : 1.0f;
+        SfxSource.volume = CalculateSfxEffectiveVolume(urgent ? 0.85f : 0.72f);
+        SfxSource.PlayOneShot(SwitchTickClip);
     }
 
     public void PlayJumpSound(int jumpStage)
@@ -508,6 +518,26 @@ public class GameAudio : MonoBehaviour
             data[i] = Mathf.Clamp((snap + body) * Envelope5MS(i, samples, fade), -0.95f, 0.95f);
         }
         var clip = AudioClip.Create("SM64_PiranhaChomp", samples, 1, sr, false);
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    private static AudioClip CreateSwitchTickClip(int sr)
+    {
+        const float dur = 0.042f;
+        var samples = Mathf.RoundToInt(sr * dur);
+        var data = new float[samples];
+        var fade = Mathf.RoundToInt(sr * 0.002f);
+        var ph = 0f;
+        for (var i = 0; i < samples; i++)
+        {
+            var u = (float)i / samples;
+            var freq = Mathf.Lerp(1450f, 880f, u);
+            ph += (2f * Mathf.PI * freq) / sr;
+            var env = Mathf.Exp(-u * 10f);
+            data[i] = Mathf.Sin(ph) * env * 0.7f * Envelope5MS(i, samples, fade);
+        }
+        var clip = AudioClip.Create("SM64_SwitchTick", samples, 1, sr, false);
         clip.SetData(data, 0);
         return clip;
     }

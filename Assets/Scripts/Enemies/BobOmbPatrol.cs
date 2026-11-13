@@ -82,9 +82,12 @@ public class BobOmbPatrol : MonoBehaviour, IImpactReceiver
 
         if (_bodyRenderer == null)
         {
-            var bodyTr = transform.Find("BobOmbBody");
+            var bodyTr = transform.Find("BobOmbBody") ?? transform.Find("Body");
             if (bodyTr != null) _bodyRenderer = bodyTr.GetComponent<MeshRenderer>();
         }
+        if (windupKey == null) windupKey = transform.Find("WindupKey");
+        if (leftFoot == null) leftFoot = transform.Find("Foot_L");
+        if (rightFoot == null) rightFoot = transform.Find("Foot_R");
         if (_bodyRenderer != null && _bodyRenderer.sharedMaterial != null)
         {
             _origBodyColor = _bodyRenderer.sharedMaterial.color;

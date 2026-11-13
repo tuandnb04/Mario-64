@@ -724,6 +724,13 @@ MonoBehaviour:
   switchDuration: 22
   stepOrderIndex: 0
   ghostWireframeVisual: {fileID: 0}
+  autoStepCount: 5
+  stepPrefab: {fileID: 0}
+  stepSize: {x: 1, y: 1, z: 1}
+  firstStepLocalOffset: {x: 0, y: 0.5, z: 2.5}
+  stepSpacing: {x: 0, y: 0.5, z: 1.5}
+  stepSequenceInterval: 0.12
+  generatedStepsContainer: {fileID: 0}
   ferrisPlatforms:
   - {fileID: 4570626370164355623}
   - {fileID: 1697648172074475979}

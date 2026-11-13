@@ -41,6 +41,8 @@ public class TestPlaygroundManager : MonoBehaviour
             // Keep title selectable OR auto-ready for playground testing!
         }
         WireZoneButtons();
+        var testHudRoot = transform.Find("TestHUDRoot");
+        if (testHudRoot != null) testHudRoot.gameObject.SetActive(false);
         RefreshTelemetryUI();
     }
 
@@ -100,6 +102,12 @@ public class TestPlaygroundManager : MonoBehaviour
         var hero = MarioRemakeController.Instance;
         var gm = GameManager.Instance;
         var kb = Keyboard.current;
+
+        if (kb != null && kb.f3Key.wasPressedThisFrame)
+        {
+            var testHudRoot = transform.Find("TestHUDRoot");
+            if (testHudRoot != null) testHudRoot.gameObject.SetActive(!testHudRoot.gameObject.activeSelf);
+        }
 
         if (gm != null && gm.currentState == GameState.Playing && kb != null)
         {

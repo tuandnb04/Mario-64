@@ -36,7 +36,7 @@ public class WhompFortressElement : MonoBehaviour, IImpactReceiver
 {
     public void OnImpact(Vector3 impactOrigin, float distanceSq)
     {
-        if (hazardType == FortressHazardType.BreakawayBrickWall)
+        if (hazardType == Mario64Remake.FortressHazardType.BreakawayBrickWall)
             ShatterBreakawayWall();
     }
     public Mario64Remake.FortressHazardType hazardType = Mario64Remake.FortressHazardType.ShoveBlock;

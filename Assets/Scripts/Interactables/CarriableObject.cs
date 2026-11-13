@@ -127,7 +127,7 @@ public class CarriableObject : MonoBehaviour
                     DropAtFeet(transform.position, transform.rotation);
                     break;
                 }
-                transform.position = _carryAnchor.position + Vector3.up * (1.85f + carryHeightOffset);
+                transform.position = _carryAnchor.position + Vector3.up * (0.98f + carryHeightOffset);
                 transform.rotation = _carryAnchor.rotation;
                 break;
 

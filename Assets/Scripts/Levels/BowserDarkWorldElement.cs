@@ -47,6 +47,15 @@ public class BowserDarkWorldElement : MonoBehaviour
     public int stepOrderIndex;
     public Renderer ghostWireframeVisual;
 
+    [Header("Auto 1x1 Step Generator (Purple Switch)")]
+    [Min(0)] public int autoStepCount = 5;
+    public GameObject stepPrefab;
+    public Vector3 stepSize = Vector3.one;
+    public Vector3 firstStepLocalOffset = new(0f, 0.5f, 2.5f);
+    public Vector3 stepSpacing = new(0f, 0.5f, 1.5f);
+    [Min(0f)] public float stepSequenceInterval = 0.12f;
+    [HideInInspector] public Transform generatedStepsContainer;
+
     [Header("Ferris Wheel Children")]
     public Transform[] ferrisPlatforms;
 
@@ -64,10 +73,13 @@ public class BowserDarkWorldElement : MonoBehaviour
     private Vector3 _originScale;
     private float _clock;
     private float _switchRemainingTimer;
+    private float _switchTickTimer;
     private bool _stepActive;
     private float _stepActivationTimer;
     private float _cooldown;
     private bool _flameCurrentlyHot;
+    private Transform[] _switchButtonParts;
+    private Vector3[] _switchButtonOriginLocalPos;
 
     private void Awake()
     {
@@ -83,6 +95,10 @@ public class BowserDarkWorldElement : MonoBehaviour
                 flameColumnVisual.gameObject.SetActive(false);
                 break;
             case DarkWorldHazardType.PurpleSwitchCrystal:
+                CacheSwitchButtonParts();
+                if ((linkedSwitchSteps == null || linkedSwitchSteps.Length == 0) && autoStepCount > 0)
+                    GenerateSteps(runtimeSpawn: true);
+                break;
             case DarkWorldHazardType.TiltingSeesawBridge:
             case DarkWorldHazardType.MovingDiamondLift:
             case DarkWorldHazardType.SlidingPusherBlock:
@@ -113,6 +129,10 @@ public class BowserDarkWorldElement : MonoBehaviour
                 flameColumnVisual.gameObject.SetActive(false);
                 break;
             case DarkWorldHazardType.PurpleSwitchCrystal:
+                CacheSwitchButtonParts();
+                if ((linkedSwitchSteps == null || linkedSwitchSteps.Length == 0) && autoStepCount > 0)
+                    GenerateSteps(runtimeSpawn: true);
+                break;
             case DarkWorldHazardType.TiltingSeesawBridge:
             case DarkWorldHazardType.MovingDiamondLift:
             case DarkWorldHazardType.SlidingPusherBlock:
@@ -185,15 +205,60 @@ public class BowserDarkWorldElement : MonoBehaviour
         }
     }
 
+    private void CacheSwitchButtonParts()
+    {
+        var count = transform.childCount;
+        if (count == 0) return;
+
+        var parts = new System.Collections.Generic.List<Transform>(count);
+        for (var i = 0; i < count; i++)
+        {
+            var child = transform.GetChild(i);
+            if (child == null) continue;
+            // Keep the outer gold base/rim fixed on the ground.
+            if (string.Equals(child.name, "Plinth", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(child.name, "BasePlate", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            parts.Add(child);
+        }
+
+        _switchButtonParts = parts.ToArray();
+        _switchButtonOriginLocalPos = new Vector3[_switchButtonParts.Length];
+        for (var i = 0; i < _switchButtonParts.Length; i++)
+            _switchButtonOriginLocalPos[i] = _switchButtonParts[i].localPosition;
+    }
+
+    private void ApplySwitchPressVisual(bool pressed, float dt, bool instant = false)
+    {
+        float pressOffset = pressed ? -0.07f : 0f;
+        if (_switchButtonParts != null && _switchButtonParts.Length > 0)
+        {
+            for (var i = 0; i < _switchButtonParts.Length; i++)
+            {
+                var part = _switchButtonParts[i];
+                if (part == null) continue;
+                var target = _switchButtonOriginLocalPos[i] + new Vector3(0f, pressOffset, 0f);
+                part.localPosition = instant ? target : Vector3.Lerp(part.localPosition, target, 16f * dt);
+            }
+        }
+        else
+        {
+            var target = _originPos + new Vector3(0f, pressOffset, 0f);
+            transform.position = instant ? target : Vector3.Lerp(transform.position, target, 16f * dt);
+        }
+    }
+
     private void UpdatePurpleSwitch(float dt)
     {
-        transform.Rotate(0f, 38f * dt, 0f, Space.Self);
         if (_switchRemainingTimer > 0f)
         {
             _switchRemainingTimer -= dt;
             if (_switchRemainingTimer <= 0f)
             {
-                transform.position = _originPos;
+                _switchRemainingTimer = 0f;
+                ApplySwitchPressVisual(false, dt, instant: true);
                 if (linkedSwitchSteps != null)
                 {
                     foreach (var step in linkedSwitchSteps)
@@ -204,17 +269,39 @@ public class BowserDarkWorldElement : MonoBehaviour
             }
             else
             {
-                transform.position = _originPos + Vector3.down * 0.18f;
+                ApplySwitchPressVisual(true, dt);
+
+                // Classic SM64 tick-tick-tick countdown & urgent blink warning before disappearing
+                float blinkThreshold = Mathf.Min(4.0f, switchDuration * 0.35f);
+                bool urgent = _switchRemainingTimer <= blinkThreshold;
+                float tickInterval = urgent ? (_switchRemainingTimer <= 1.5f ? 0.16f : 0.28f) : 0.52f;
+
+                _switchTickTimer -= dt;
+                if (_switchTickTimer <= 0f)
+                {
+                    _switchTickTimer = tickInterval;
+                    if (GameAudio.Instance != null) GameAudio.Instance.PlaySwitchTick(urgent);
+                }
+
+                if (urgent && linkedSwitchSteps != null)
+                {
+                    float blinkFreq = _switchRemainingTimer <= 1.5f ? 12f : 6f;
+                    bool showVisual = ((int)(_switchRemainingTimer * blinkFreq) % 2) == 0;
+                    foreach (var step in linkedSwitchSteps)
+                    {
+                        if (step != null) step.SetStepBlinkVisual(showVisual);
+                    }
+                }
             }
         }
         else
         {
-            transform.position = _originPos + Vector3.up * (Mathf.Sin(_clock * 3.0f) * 0.08f);
+            ApplySwitchPressVisual(false, dt);
         }
 
         var hero = MarioRemakeController.Instance;
-        if (hero == null || _cooldown > 0f) return;
-        if (Vector3.Distance(hero.transform.position, transform.position) < 2.0f)
+        if (hero == null || _cooldown > 0f || _switchRemainingTimer > 0f) return;
+        if (Vector3.Distance(hero.transform.position, transform.position) < 1.6f)
         {
             ActivateSwitch();
         }
@@ -224,6 +311,7 @@ public class BowserDarkWorldElement : MonoBehaviour
     {
         _cooldown = 1.0f;
         _switchRemainingTimer = switchDuration;
+        _switchTickTimer = 0.25f;
         if (GameAudio.Instance != null) GameAudio.Instance.PlayMilestoneSting();
         if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 0.5f, isStar: false);
 
@@ -232,21 +320,152 @@ public class BowserDarkWorldElement : MonoBehaviour
         {
             if (linkedSwitchSteps[i] != null)
             {
-                linkedSwitchSteps[i].ActivateStep(i * 0.09f);
+                linkedSwitchSteps[i].ActivateStep(i * stepSequenceInterval);
             }
+        }
+    }
+
+    [ContextMenu("Generate 1x1 Steps In Order")]
+    public void GenerateStepsFromMenu() => GenerateSteps(runtimeSpawn: false);
+
+    [ContextMenu("Clear Generated Steps")]
+    public void ClearGeneratedSteps()
+    {
+        if (generatedStepsContainer != null)
+        {
+            if (Application.isPlaying) Destroy(generatedStepsContainer.gameObject);
+            else DestroyImmediate(generatedStepsContainer.gameObject);
+            generatedStepsContainer = null;
+        }
+        linkedSwitchSteps = Array.Empty<BowserDarkWorldElement>();
+    }
+
+    public void GenerateSteps(bool runtimeSpawn = false)
+    {
+        if (hazardType != DarkWorldHazardType.PurpleSwitchCrystal) return;
+
+        ClearGeneratedSteps();
+        if (autoStepCount <= 0) return;
+
+        var containerGo = new GameObject($"{gameObject.name}_Steps");
+        if (transform.parent != null)
+            containerGo.transform.SetParent(transform.parent, false);
+        containerGo.transform.SetPositionAndRotation(transform.position, transform.rotation);
+        generatedStepsContainer = containerGo.transform;
+
+        var steps = new BowserDarkWorldElement[autoStepCount];
+        Material fallbackMat = null;
+
+        for (var i = 0; i < autoStepCount; i++)
+        {
+            var localPos = firstStepLocalOffset + stepSpacing * i;
+            var worldPos = transform.TransformPoint(localPos);
+
+            GameObject stepGo;
+            if (stepPrefab != null)
+            {
+#if UNITY_EDITOR
+                if (!Application.isPlaying && !runtimeSpawn)
+                    stepGo = (GameObject)UnityEditor.PrefabUtility.InstantiatePrefab(stepPrefab, containerGo.transform);
+                else
+                    stepGo = Instantiate(stepPrefab, containerGo.transform);
+#else
+                stepGo = Instantiate(stepPrefab, containerGo.transform);
+#endif
+                stepGo.transform.SetPositionAndRotation(worldPos, transform.rotation);
+            }
+            else
+            {
+                stepGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                stepGo.transform.SetParent(containerGo.transform, false);
+                stepGo.transform.SetPositionAndRotation(worldPos, transform.rotation);
+
+                if (fallbackMat == null)
+                {
+                    var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                    fallbackMat = new Material(shader);
+                    fallbackMat.SetColor("_BaseColor", new Color(0.55f, 0.25f, 0.85f, 1f));
+                }
+                var mr = stepGo.GetComponent<MeshRenderer>();
+                if (mr != null) mr.sharedMaterial = fallbackMat;
+            }
+
+            stepGo.name = $"Step_{i + 1:00}";
+            stepGo.transform.localScale = stepSize;
+
+            var elem = stepGo.GetComponent<BowserDarkWorldElement>();
+            if (elem == null) elem = stepGo.AddComponent<BowserDarkWorldElement>();
+            elem.hazardType = DarkWorldHazardType.SwitchTimedStairStep;
+            elem.stepOrderIndex = i;
+            if (Application.isPlaying) elem.ApplyStepVisibility(false);
+
+            steps[i] = elem;
+        }
+
+        linkedSwitchSteps = steps;
+    }
+
+    private void OnDrawGizmos()
+    {
+        if (hazardType != DarkWorldHazardType.PurpleSwitchCrystal) return;
+
+        Gizmos.color = new Color(0.65f, 0.3f, 1f, 0.85f);
+        if (linkedSwitchSteps != null && linkedSwitchSteps.Length > 0)
+        {
+            Vector3 prev = transform.position;
+            for (var i = 0; i < linkedSwitchSteps.Length; i++)
+            {
+                var step = linkedSwitchSteps[i];
+                if (step == null) continue;
+                Gizmos.DrawLine(prev, step.transform.position);
+                Gizmos.DrawWireCube(step.transform.position, step.transform.lossyScale);
+                prev = step.transform.position;
+            }
+            return;
+        }
+
+        if (autoStepCount <= 0) return;
+        Vector3 prevPreview = transform.position;
+        for (var i = 0; i < autoStepCount; i++)
+        {
+            var worldPos = transform.TransformPoint(firstStepLocalOffset + stepSpacing * i);
+            Gizmos.DrawLine(prevPreview, worldPos);
+            Gizmos.matrix = Matrix4x4.TRS(worldPos, transform.rotation, stepSize);
+            Gizmos.DrawWireCube(Vector3.zero, Vector3.one);
+            Gizmos.matrix = Matrix4x4.identity;
+            prevPreview = worldPos;
         }
     }
 
     private void ActivateStep(float delay)
     {
         _stepActive = true;
-        _stepActivationTimer = delay;
+        if (delay <= 0f)
+        {
+            _stepActivationTimer = 0f;
+            ApplyStepVisibility(true);
+        }
+        else
+        {
+            _stepActivationTimer = delay;
+        }
     }
 
     private void DeactivateStep()
     {
         _stepActive = false;
         ApplyStepVisibility(false);
+    }
+
+    public void SetStepBlinkVisual(bool visible)
+    {
+        if (!_stepActive || _stepActivationTimer > 0f) return;
+        foreach (var mr in GetComponentsInChildren<MeshRenderer>(true))
+        {
+            if (mr == null) continue;
+            if (ghostWireframeVisual != null && mr == ghostWireframeVisual) continue;
+            mr.enabled = visible;
+        }
     }
 
     private void UpdateTimedStairStep(float dt)

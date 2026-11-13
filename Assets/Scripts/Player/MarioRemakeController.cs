@@ -159,6 +159,7 @@ public class MarioRemakeController : MonoBehaviour
     private float _attackDuration = 0.25f;
     private float _attackChainWindowTimer;
     private bool _attackHitRegistered;
+    private bool _usedAirKick;
 
     // Bowser Tail Grab & Spin State
     private BowserBossController _spinningBowser;
@@ -305,6 +306,38 @@ public class MarioRemakeController : MonoBehaviour
         if (motion != null) motion.isSpinningBowser = false;
     }
 
+    public void SetBossHeld(Vector3 worldPos, float yawDeg)
+    {
+        if (_cc != null && _cc.enabled) _cc.enabled = false;
+        transform.position = worldPos;
+        transform.rotation = Quaternion.Euler(0f, yawDeg, 0f);
+        _planarVelocity = Vector3.zero;
+        CurrentVerticalSpeed = 0f;
+        _isDiving = false;
+        _isBellySliding = false;
+        _isGroundPounding = false;
+        _isSlideKicking = false;
+        _isRolling = false;
+        _isSpinAttacking = false;
+    }
+
+    public void LaunchFromBossThrow(Vector3 velocity, int damageWedges = 1)
+    {
+        if (_cc != null && !_cc.enabled) _cc.enabled = true;
+        _planarVelocity = new Vector3(velocity.x, 0f, velocity.z);
+        CurrentVerticalSpeed = velocity.y;
+        _isDiving = false;
+        _isGroundPounding = false;
+        if (damageWedges > 0)
+        {
+            currentHealth = Mathf.Max(0, currentHealth - damageWedges);
+            _hurtInvulnTimer = hurtInvulnDuration;
+            if (GameAudio.Instance != null) GameAudio.Instance.PlayHurtSound();
+            if (impulseSource != null) impulseSource.GenerateImpulse(0.5f);
+            if (currentHealth <= 0) RespawnAfterDeath();
+        }
+    }
+
     private void Awake()
     {
         instance = this;
@@ -332,6 +365,12 @@ public class MarioRemakeController : MonoBehaviour
 
     private void Start()
     {
+        if (GameManager.Instance == null)
+        {
+            var gmGo = new GameObject("GameManager");
+            var gm = gmGo.AddComponent<GameManager>();
+            gm.player = this;
+        }
         _playgroundMgr = FindAnyObjectByType<TestPlaygroundManager>();
         ResolveCinemachineComponents();
         ApplyProxyRotationImmediate();
@@ -454,7 +493,7 @@ public class MarioRemakeController : MonoBehaviour
 
         // 0. Check Swimming vs Grounded State + Health Flash + Abyss Respawn
         UpdateDamageFlashAndAbyssCheck(dt);
-        if (hasWaterInCourse && CheckAndHandleSwimmingState(dt))
+        if ((hasWaterInCourse || WaterVolume.HasAny) && CheckAndHandleSwimmingState(dt))
         {
             UpdateMotionComponentOnly();
             return;
@@ -560,7 +599,7 @@ public class MarioRemakeController : MonoBehaviour
         {
             _lastGroundedTime = Time.time;
             _wallKickSteerLockTimer = 0f;
-            if (!_wasGrounded)
+            if (!_wasGrounded || _isGroundPounding)
             {
                 OnJustLanded();
             }
@@ -764,6 +803,7 @@ public class MarioRemakeController : MonoBehaviour
         }
 
         // 14. Execute CharacterController Move
+        if (_cc == null || !_cc.enabled) return;
         var totalMotion = (_planarVelocity + Vector3.up * CurrentVerticalSpeed) * dt;
         var flags = _cc.Move(totalMotion);
 
@@ -773,6 +813,10 @@ public class MarioRemakeController : MonoBehaviour
         }
         if ((flags & CollisionFlags.Below) != 0)
         {
+            if (!_wasGrounded || _isGroundPounding)
+            {
+                OnJustLanded();
+            }
             _wasGrounded = true;
         }
         else
@@ -1334,6 +1378,41 @@ public class MarioRemakeController : MonoBehaviour
         }
 
         ApplyProxyRotationImmediate();
+
+        // Fallback when dropped into a new scene without CinemachineCamera ("Gameplay"):
+        // drive Camera.main directly from cameraYawProxy so the prefab works plug-and-play!
+        if (_cmFollow == null && cameraYawProxy != null)
+        {
+            var mainCam = Camera.main;
+            if (mainCam != null)
+            {
+                var spinBoost = IsSpinningBowser ? 2.4f : 0f;
+                var speedZoom = Mathf.Clamp01(_planarVelocity.magnitude / maxRunSpeed) * 0.55f;
+                var targetDistance = IsFirstPersonLooking ? 0.08f : cameraDistance + spinBoost + speedZoom;
+                var shoulderOffset = IsFirstPersonLooking ? new Vector3(0f, 0.34f, 0.16f) : new Vector3(0f, 0.44f, 0f);
+
+                var camRot = cameraYawProxy.rotation;
+                var pivot = cameraYawProxy.position + camRot * (shoulderOffset + Vector3.up * 0.22f);
+                var backDir = -(camRot * Vector3.forward);
+                var finalDistance = targetDistance;
+
+                if (!IsFirstPersonLooking && Physics.SphereCast(pivot, 0.22f, backDir, out var hit, targetDistance, ~0, QueryTriggerInteraction.Ignore))
+                {
+                    if (!hit.transform.IsChildOf(transform) && hit.transform != transform)
+                    {
+                        finalDistance = Mathf.Max(0.45f, hit.distance - 0.1f);
+                    }
+                }
+
+                mainCam.transform.SetPositionAndRotation(pivot + backDir * finalDistance, camRot);
+
+                var speedRatio = Mathf.Clamp01(_planarVelocity.magnitude / (maxRunSpeed * 1.4f));
+                var targetFov = IsFirstPersonLooking
+                    ? (_baseCameraFov - 8f)
+                    : (_baseCameraFov + speedRatio * 5.5f + (_isDiving || _isLongJumping || _isRolling ? 4.5f : 0f) + (IsSpinningBowser ? 5f : 0f));
+                mainCam.fieldOfView = Mathf.Lerp(mainCam.fieldOfView, targetFov, 9f * dt);
+            }
+        }
     }
 
     private void ToggleCursorLockMode(bool lockCursor)
@@ -1654,7 +1733,9 @@ public class MarioRemakeController : MonoBehaviour
         }
         else
         {
-            // Air Jump Kick
+            // Air Jump Kick (at most once per jump so spamming kick cannot fly upward)
+            if (_usedAirKick || _attackTimer > 0f) return;
+            _usedAirKick = true;
             _attackComboStage = 4;
             _attackDuration = 0.34f;
             _attackTimer = 0.34f;
@@ -1897,6 +1978,7 @@ public class MarioRemakeController : MonoBehaviour
         _isLongJumping = false;
         _isWallSliding = false;
         _usedAirSpinHover = false;
+        _usedAirKick = false;
         _jumpCutApplied = false;
 
         if (_isGroundPounding)
@@ -1933,27 +2015,33 @@ public class MarioRemakeController : MonoBehaviour
     // -------------------------------------------------------------------------
     private void ApplyMovingPlatformCarry()
     {
-        if (_activePlatform == null || !_cc.isGrounded)
+        var platform = _activePlatform;
+        if (platform == null || !_cc.isGrounded)
         {
             _activePlatform = null;
             return;
         }
 
-        var deltaPos = _activePlatform.position - _lastPlatformWorldPos;
-        var deltaRot = _activePlatform.rotation * Quaternion.Inverse(_lastPlatformWorldRot);
+        var platformPos = platform.position;
+        var platformRot = platform.rotation;
+        var deltaPos = platformPos - _lastPlatformWorldPos;
+        var deltaRot = platformRot * Quaternion.Inverse(_lastPlatformWorldRot);
 
         if (deltaPos.sqrMagnitude < 4.5f)
         {
             if (deltaPos.sqrMagnitude > 0.000001f)
             {
                 _cc.Move(deltaPos);
+                // _cc.Move can trigger OnControllerColliderHit and clear/swap _activePlatform.
+                if (_activePlatform != platform || platform == null) return;
             }
-            var offsetFromPivot = transform.position - _activePlatform.position;
+            var offsetFromPivot = transform.position - platformPos;
             var rotatedOffset = deltaRot * offsetFromPivot;
             var rotDeltaMove = rotatedOffset - offsetFromPivot;
             if (rotDeltaMove.sqrMagnitude > 0.000001f)
             {
                 _cc.Move(rotDeltaMove);
+                if (_activePlatform != platform || platform == null) return;
             }
             var yawAngle = deltaRot.eulerAngles.y;
             if (Mathf.Abs(Mathf.DeltaAngle(0f, yawAngle)) > 0.01f)
@@ -1962,8 +2050,8 @@ public class MarioRemakeController : MonoBehaviour
             }
         }
 
-        _lastPlatformWorldPos = _activePlatform.position;
-        _lastPlatformWorldRot = _activePlatform.rotation;
+        _lastPlatformWorldPos = platform.position;
+        _lastPlatformWorldRot = platform.rotation;
     }
 
     private void OnControllerColliderHit(ControllerColliderHit hit)
@@ -2066,6 +2154,7 @@ public class MarioRemakeController : MonoBehaviour
             _spinningBowser = null;
         }
         if (IsFirstPersonLooking) ExitFirstPersonLook();
+        if (_cc != null && !_cc.enabled) _cc.enabled = true;
         _activePole = null;
         _isPoleHandstand = false;
         _isRolling = false;
@@ -2112,6 +2201,7 @@ public class MarioRemakeController : MonoBehaviour
         _activePole = null;
         _isPoleHandstand = false;
         if (IsFirstPersonLooking) ExitFirstPersonLook();
+        if (_cc != null && !_cc.enabled) _cc.enabled = true;
         if (_carriedObject != null)
         {
             _carriedObject.ResetCarriable();
@@ -2160,9 +2250,15 @@ public class MarioRemakeController : MonoBehaviour
     private bool CheckAndHandleSwimmingState(float dt)
     {
         var pos = transform.position;
-        var insideBayBounds = pos.x >= waterBoundsX.x && pos.x <= waterBoundsX.y &&
-                              pos.z >= waterBoundsZ.x && pos.z <= waterBoundsZ.y;
-        var submerged = insideBayBounds && pos.y < waterSurfaceY - 0.15f;
+        var effectiveSurfaceY = waterSurfaceY;
+        var submerged = WaterVolume.TryGetWaterAt(pos, out effectiveSurfaceY);
+        if (!submerged && hasWaterInCourse)
+        {
+            var insideBayBounds = pos.x >= waterBoundsX.x && pos.x <= waterBoundsX.y &&
+                                  pos.z >= waterBoundsZ.x && pos.z <= waterBoundsZ.y;
+            effectiveSurfaceY = waterSurfaceY;
+            submerged = insideBayBounds && pos.y < effectiveSurfaceY - 0.15f;
+        }
 
         if (!submerged)
         {
@@ -2191,7 +2287,7 @@ public class MarioRemakeController : MonoBehaviour
         RecordMoveStat("Swim");
 
         var metalActive = JollyRogerBayController.IsMetalMarioActive;
-        var atSurface = pos.y >= waterSurfaceY - 0.45f;
+        var atSurface = pos.y >= effectiveSurfaceY - 0.45f;
         if (atSurface)
             currentOxygenSeconds = Mathf.MoveTowards(currentOxygenSeconds, maxOxygenSeconds, 14f * dt);
         else if (!metalActive)
@@ -2236,7 +2332,7 @@ public class MarioRemakeController : MonoBehaviour
         CurrentVerticalSpeed = Mathf.MoveTowards(CurrentVerticalSpeed, swimVelY, 20f * dt);
 
         var moveVec = _planarVelocity + Vector3.up * CurrentVerticalSpeed;
-        if (pos.y + moveVec.y * dt > waterSurfaceY - 0.08f && !swimFast)
+        if (pos.y + moveVec.y * dt > effectiveSurfaceY - 0.08f && !swimFast)
             moveVec.y = Mathf.Min(0f, moveVec.y);
 
         _cc.Move(moveVec * dt);

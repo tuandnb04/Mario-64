@@ -68,6 +68,11 @@ public class BowserBossController : MonoBehaviour
     private Material _shockMat;
     private GameObject _activeAimRing;
     private float _hudPromptCooldown;
+    private ParticleSystem _fireFlamePs;
+    private ParticleSystem _fireSmokePs;
+    private Light _fireLight;
+    private float _fireConeDamageCooldown;
+    private Texture2D _softParticleTex;
     private readonly List<ActiveFireball> _activeFireballs = new();
 
     private class ActiveFireball
@@ -86,9 +91,14 @@ public class BowserBossController : MonoBehaviour
     {
         _originPos = transform.position;
         _originRot = transform.rotation;
+        if (Vector3.Distance(_originPos, arenaCenter) > 35f)
+        {
+            arenaCenter = _originPos;
+        }
         currentBombHitsRemaining = hitsToDefeat;
         ResolveBoneAnchors();
         CreateRuntimeVfxMaterials();
+        BuildFireBreathRig();
     }
 
     private void ResolveBoneAnchors()
@@ -130,6 +140,7 @@ public class BowserBossController : MonoBehaviour
         _stateTimer = 0f;
         _velocity = Vector3.zero;
         _grabbingHero = null;
+        StopFireBreathVfx();
         ClearActiveFireballs();
         if (rewardBigKeyStar != null) rewardBigKeyStar.gameObject.SetActive(false);
         if (spikedBombs != null)
@@ -291,22 +302,40 @@ public class BowserBossController : MonoBehaviour
         {
             _fireballsRemaining = 3;
             _nextFireballTimer = 0f;
+            _fireConeDamageCooldown = 0f;
+            StartFireBreathVfx();
             EnterState(BossState.FireBreathing, "FireBreath");
         }
     }
 
     private void UpdateFireBreathing(MarioRemakeController hero, float dt)
     {
+        UpdateFireBreathVfxTransform(dt);
+
+        if (_fireConeDamageCooldown > 0f) _fireConeDamageCooldown -= dt;
+        if (hero != null && _fireConeDamageCooldown <= 0f)
+        {
+            var origin = mouthOrigin != null ? mouthOrigin.position : (transform.position + transform.forward * 1.6f + Vector3.up * 2.0f);
+            var toHero = (hero.transform.position + Vector3.up * 0.7f) - origin;
+            var dist = toHero.magnitude;
+            if (dist is > 0.4f and < 7.8f && Vector3.Angle(transform.forward, toHero.normalized) < 28f)
+            {
+                _fireConeDamageCooldown = 0.65f;
+                hero.TakeDamage(1, origin);
+            }
+        }
+
         _nextFireballTimer -= dt;
         if (_fireballsRemaining > 0 && _nextFireballTimer <= 0f)
         {
             _fireballsRemaining--;
-            _nextFireballTimer = 0.28f;
+            _nextFireballTimer = 0.34f;
             SpawnBowserFireball(hero);
         }
 
-        if (_fireballsRemaining <= 0 && _stateTimer >= 1.15f)
+        if (_fireballsRemaining <= 0 && _stateTimer >= 1.45f)
         {
+            StopFireBreathVfx();
             EnterState(BossState.Recovering, "Idle");
         }
     }
@@ -360,6 +389,7 @@ public class BowserBossController : MonoBehaviour
         _spinAngleDeg = Mathf.Atan2(transform.position.x - hero.transform.position.x, transform.position.z - hero.transform.position.z) * Mathf.Rad2Deg;
         _spinAngularSpeedDeg = 165f;
         _spinHoldSeconds = 0f;
+        StopFireBreathVfx();
         _state = BossState.GrabbedAndSpun;
         _stateTimer = 0f;
         PlayBowserAnim("TailGrabbedFlail");
@@ -415,10 +445,15 @@ public class BowserBossController : MonoBehaviour
 
         var rad = _spinAngleDeg * Mathf.Deg2Rad;
         var outDir = new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad));
+        var speedRatio = Mathf.Clamp01((Mathf.Abs(_spinAngularSpeedDeg) - 120f) / 420f);
+        var liftY = Mathf.Lerp(0.32f, 1.35f, speedRatio);
+        var swingRadius = Mathf.Lerp(2.45f, 2.85f, speedRatio);
+        var tiltPitch = Mathf.Lerp(14f, 34f, speedRatio);
+        var bankRoll = -Mathf.Sign(_spinAngularSpeedDeg) * Mathf.Lerp(8f, 24f, speedRatio);
 
-        // Bowser hovers slightly tilted outward while Mario grips Tail_04!
-        transform.position = heroPos + outDir * 2.55f + Vector3.up * 0.25f;
-        transform.rotation = Quaternion.LookRotation(outDir, Vector3.up) * Quaternion.Euler(14f, 0f, 0f);
+        // Bowser lifts and leans outward with centrifugal force while Mario grips Tail_04!
+        transform.position = heroPos + outDir * swingRadius + Vector3.up * liftY;
+        transform.rotation = Quaternion.LookRotation(outDir, Vector3.up) * Quaternion.Euler(tiltPitch, 0f, bankRoll);
         _grabbingHero.transform.rotation = Quaternion.LookRotation(outDir, Vector3.up);
     }
 
@@ -643,6 +678,160 @@ public class BowserBossController : MonoBehaviour
     {
         foreach (var fb in _activeFireballs.Where(fb => fb.Go != null)) Destroy(fb.Go);
         _activeFireballs.Clear();
+    }
+
+    private void BuildFireBreathRig()
+    {
+        var anchor = mouthOrigin != null ? mouthOrigin : transform;
+        var rigGo = new GameObject("BowserFireBreathVFX");
+        rigGo.transform.SetParent(anchor, false);
+        rigGo.transform.localPosition = mouthOrigin != null ? new Vector3(0f, 0.05f, 0.45f) : new Vector3(0f, 2.0f, 1.6f);
+
+        _softParticleTex = CreateSoftParticleTexture();
+        var particleMat = new Material(Shader.Find("Particles/Standard Unlit") ?? Shader.Find("Universal Render Pipeline/Particles/Unlit") ?? Shader.Find("Sprites/Default"));
+        particleMat.mainTexture = _softParticleTex;
+
+        // 1. Roaring flame cone (bright yellow-white core -> deep orange-red)
+        var flameGo = new GameObject("FlameStream");
+        flameGo.transform.SetParent(rigGo.transform, false);
+        _fireFlamePs = flameGo.AddComponent<ParticleSystem>();
+        var fm = _fireFlamePs.main;
+        fm.playOnAwake = false;
+        fm.loop = true;
+        fm.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 0.72f);
+        fm.startSpeed = new ParticleSystem.MinMaxCurve(9.5f, 13.5f);
+        fm.startSize = new ParticleSystem.MinMaxCurve(0.65f, 1.35f);
+        fm.simulationSpace = ParticleSystemSimulationSpace.World;
+        fm.maxParticles = 140;
+
+        var fEmit = _fireFlamePs.emission;
+        fEmit.rateOverTime = 75f;
+
+        var fShape = _fireFlamePs.shape;
+        fShape.shapeType = ParticleSystemShapeType.Cone;
+        fShape.angle = 16f;
+        fShape.radius = 0.22f;
+
+        var fCol = _fireFlamePs.colorOverLifetime;
+        fCol.enabled = true;
+        var fGrad = new Gradient();
+        fGrad.SetKeys(
+            new[]
+            {
+                new GradientColorKey(new Color(1f, 0.98f, 0.75f), 0f),
+                new GradientColorKey(new Color(1f, 0.55f, 0.08f), 0.35f),
+                new GradientColorKey(new Color(0.92f, 0.14f, 0.04f), 0.85f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0.95f, 0f),
+                new GradientAlphaKey(0.85f, 0.55f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        fCol.color = fGrad;
+
+        var fSize = _fireFlamePs.sizeOverLifetime;
+        fSize.enabled = true;
+        fSize.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 0.45f, 1f, 2.2f));
+
+        var fRen = flameGo.GetComponent<ParticleSystemRenderer>();
+        fRen.sharedMaterial = particleMat;
+
+        // 2. Rising dark smoke billows at the outer tip of the flame
+        var smokeGo = new GameObject("SmokeBillows");
+        smokeGo.transform.SetParent(rigGo.transform, false);
+        _fireSmokePs = smokeGo.AddComponent<ParticleSystem>();
+        var sm = _fireSmokePs.main;
+        sm.playOnAwake = false;
+        sm.loop = true;
+        sm.startLifetime = new ParticleSystem.MinMaxCurve(0.85f, 1.35f);
+        sm.startSpeed = new ParticleSystem.MinMaxCurve(6.5f, 9.5f);
+        sm.startSize = new ParticleSystem.MinMaxCurve(1.1f, 2.1f);
+        sm.gravityModifier = -0.35f;
+        sm.simulationSpace = ParticleSystemSimulationSpace.World;
+        sm.maxParticles = 90;
+
+        var sEmit = _fireSmokePs.emission;
+        sEmit.rateOverTime = 32f;
+
+        var sShape = _fireSmokePs.shape;
+        sShape.shapeType = ParticleSystemShapeType.Cone;
+        sShape.angle = 22f;
+        sShape.radius = 0.3f;
+
+        var sCol = _fireSmokePs.colorOverLifetime;
+        sCol.enabled = true;
+        var sGrad = new Gradient();
+        sGrad.SetKeys(
+            new[]
+            {
+                new GradientColorKey(new Color(0.35f, 0.22f, 0.16f), 0f),
+                new GradientColorKey(new Color(0.14f, 0.14f, 0.15f), 0.45f),
+                new GradientColorKey(new Color(0.08f, 0.08f, 0.09f), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0f, 0f),
+                new GradientAlphaKey(0.65f, 0.3f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        sCol.color = sGrad;
+
+        var sRen = smokeGo.GetComponent<ParticleSystemRenderer>();
+        sRen.sharedMaterial = particleMat;
+
+        var lightGo = new GameObject("FireLight");
+        lightGo.transform.SetParent(rigGo.transform, false);
+        _fireLight = lightGo.AddComponent<Light>();
+        _fireLight.type = LightType.Point;
+        _fireLight.color = new Color(1f, 0.48f, 0.12f);
+        _fireLight.range = 10f;
+        _fireLight.intensity = 0f;
+        _fireLight.enabled = false;
+    }
+
+    private void StartFireBreathVfx()
+    {
+        if (_fireFlamePs != null) _fireFlamePs.Play();
+        if (_fireSmokePs != null) _fireSmokePs.Play();
+        if (_fireLight != null) _fireLight.enabled = true;
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayBowserRoarSound();
+    }
+
+    private void UpdateFireBreathVfxTransform(float dt)
+    {
+        var aimRot = Quaternion.LookRotation((transform.forward - Vector3.up * 0.08f).normalized, Vector3.up);
+        if (_fireFlamePs != null) _fireFlamePs.transform.parent.rotation = aimRot;
+        if (_fireLight != null && _fireLight.enabled)
+        {
+            _fireLight.intensity = 4.2f + Mathf.Sin(Time.time * 38f) * 1.4f;
+        }
+    }
+
+    private void StopFireBreathVfx()
+    {
+        if (_fireFlamePs != null && _fireFlamePs.isPlaying) _fireFlamePs.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+        if (_fireSmokePs != null && _fireSmokePs.isPlaying) _fireSmokePs.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+        if (_fireLight != null) _fireLight.enabled = false;
+    }
+
+    private static Texture2D CreateSoftParticleTexture()
+    {
+        const int size = 64;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        const float center = (size - 1) * 0.5f;
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var d = Vector2.Distance(new Vector2(x, y), new Vector2(center, center)) / center;
+                var a = Mathf.Clamp01(1f - d);
+                a = a * a;
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+            }
+        }
+        tex.Apply();
+        return tex;
     }
 
     private void SpawnShockwaveRing(Vector3 center, float maxRadius, bool damageHero)

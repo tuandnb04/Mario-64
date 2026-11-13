@@ -97,6 +97,8 @@ public class GameManager : MonoBehaviour
     private readonly Image[] _powerMeterWedges = new Image[8];
     private TextMeshProUGUI _powerMeterCenterText;
     private TextMeshProUGUI _livesCounterText;
+    private GameObject _coinBadgeGo;
+    private readonly Image[] _redCoinSlots = new Image[8];
     private RectTransform _powerMeterRoot;
     private TextMeshProUGUI _actMissionBadgeText;
     private TextMeshProUGUI _titleActPreviewText;
@@ -125,11 +127,12 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
+        if (player == null) player = FindAnyObjectByType<MarioRemakeController>();
         RefreshCollectibleRegistry();
         EnsureSm64StyledHUD();
         WireSliders();
         SetupActMissionState(1);
-        SetStateImmediate(GameState.Title);
+        SetStateImmediate(titlePanel != null ? GameState.Title : GameState.Playing);
         var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
         var isJrb = !string.IsNullOrEmpty(sceneName) && sceneName.Contains("JollyRoger");
         var isBitDw = !string.IsNullOrEmpty(sceneName) && (sceneName.Contains("Bowser") || sceneName.Contains("DarkWorld"));
@@ -1053,22 +1056,33 @@ public class GameManager : MonoBehaviour
 
     private void RefreshHUDTexts()
     {
+        var showCoins = coinsCollected >= 1;
         if (coinCounterText != null)
-            coinCounterText.text = $"× {coinsCollected:00}";
-        if (starCounterText != null)
-            starCounterText.text = $"× {starsCollected}/{targetStarsToWin}";
-        if (redCoinCounterText != null)
-            redCoinCounterText.text = $"× {redCoinsCollected}/8";
-        if (_livesCounterText != null)
         {
-            var lifeCount = player != null ? Mathf.Max(0, player.lives) : 4;
-            _livesCounterText.text = $"× {lifeCount}";
+            coinCounterText.text = $"× {coinsCollected:00}";
+            coinCounterText.gameObject.SetActive(showCoins);
         }
+        if (_coinBadgeGo != null) _coinBadgeGo.SetActive(showCoins);
+
+        if (starCounterText != null)
+            starCounterText.gameObject.SetActive(false);
+
+        if (redCoinCounterText != null)
+            redCoinCounterText.gameObject.SetActive(false);
+
+        for (var i = 0; i < _redCoinSlots.Length; i++)
+        {
+            if (_redCoinSlots[i] != null)
+                _redCoinSlots[i].gameObject.SetActive(i < redCoinsCollected);
+        }
+
+        if (_livesCounterText != null)
+            _livesCounterText.gameObject.SetActive(false);
         if (_actMissionBadgeText != null)
         {
             _actMissionBadgeText.text = $"ACT {currentActNumber}: {currentMissionTitle}";
         }
-        if (starPowerFillBar != null && player != null && player.hasWaterInCourse && player.IsSwimming)
+        if (starPowerFillBar != null && player != null && player.IsSwimming)
         {
             starPowerFillBar.fillAmount = player.OxygenNormalized;
         }
@@ -1078,23 +1092,30 @@ public class GameManager : MonoBehaviour
     private void UpdateSm64PowerMeterVisual()
     {
         if (_powerMeterRoot == null) return;
-        var isSwimAir = player != null && player.hasWaterInCourse && player.IsSwimming && !JollyRogerBayController.IsMetalMarioActive;
-        var wedgesActive = player != null ? (isSwimAir ? player.OxygenWedges : player.HealthWedges) : 8;
+        var isSwimAir = player != null && player.IsSwimming && !JollyRogerBayController.IsMetalMarioActive;
+        var isRecoveringAir = player != null && player.currentOxygenSeconds < player.maxOxygenSeconds - 0.05f;
+        var isDamaged = player != null && player.currentHealth < player.maxHealth;
+        var shouldShowPower = isDamaged || isSwimAir || isRecoveringAir;
+        if (_powerMeterRoot.gameObject.activeSelf != shouldShowPower)
+        {
+            _powerMeterRoot.gameObject.SetActive(shouldShowPower);
+        }
+        if (!shouldShowPower) return;
+
+        var showOxygenRing = isSwimAir || isRecoveringAir;
+        var wedgesActive = player != null ? (showOxygenRing ? player.OxygenWedges : player.HealthWedges) : 8;
 
         Color activeColor;
-        if (isSwimAir)
+        if (showOxygenRing)
         {
             activeColor = wedgesActive <= 2
-                ? Color.Lerp(new Color(0.20f, 0.90f, 1.0f), new Color(1.0f, 0.25f, 0.35f), 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 11f))
-                : new Color(0.24f, 0.88f, 1.0f);
+                ? Color.Lerp(new Color(0.18f, 0.88f, 1.0f), new Color(1.0f, 0.22f, 0.25f), 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 11f))
+                : new Color(0.20f, 0.88f, 1.0f);
         }
         else switch (wedgesActive)
         {
-            case >= 7:
-                activeColor = new Color(0.22f, 0.62f, 1.0f);
-                break;
             case >= 5:
-                activeColor = new Color(0.24f, 0.90f, 0.38f);
+                activeColor = new Color(0.12f, 0.92f, 0.14f);
                 break;
             case >= 3:
                 activeColor = new Color(1.0f, 0.82f, 0.14f);
@@ -1102,12 +1123,12 @@ public class GameManager : MonoBehaviour
             default:
             {
                 var pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 12f);
-                activeColor = Color.Lerp(new Color(0.96f, 0.20f, 0.14f), new Color(1.0f, 0.65f, 0.18f), pulse);
+                activeColor = Color.Lerp(new Color(0.96f, 0.18f, 0.14f), new Color(1.0f, 0.58f, 0.16f), pulse);
                 break;
             }
         }
 
-        var emptyColor = new Color(0.11f, 0.14f, 0.22f, 0.42f);
+        var emptyColor = new Color(0.10f, 0.12f, 0.16f, 0.48f);
         for (var i = 0; i < 8; i++)
         {
             var img = _powerMeterWedges[i];
@@ -1116,8 +1137,9 @@ public class GameManager : MonoBehaviour
         }
 
         if (_powerMeterCenterText == null) return;
-        _powerMeterCenterText.text = isSwimAir ? "AIR" : (JollyRogerBayController.IsMetalMarioActive ? "MTL" : "PWR");
-        _powerMeterCenterText.color = isSwimAir ? new Color(0.55f, 0.95f, 1.0f) : new Color(1f, 0.92f, 0.45f);
+        var hp = player != null ? Mathf.Max(0, player.currentHealth) : 8;
+        _powerMeterCenterText.text = hp.ToString();
+        _powerMeterCenterText.color = hp <= 2 ? new Color(0.82f, 0.08f, 0.08f) : new Color(0.08f, 0.09f, 0.12f);
     }
 
     private void EnsureSm64StyledHUD()
@@ -1126,7 +1148,29 @@ public class GameManager : MonoBehaviour
         _sm64HudStyled = true;
 
         if (mainCanvas == null) mainCanvas = FindAnyObjectByType<Canvas>();
-        if (mainCanvas == null) return;
+        if (mainCanvas == null)
+        {
+            var canvasGo = new GameObject("GameHUDCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            mainCanvas = canvasGo.GetComponent<Canvas>();
+            mainCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            mainCanvas.sortingOrder = 10;
+            var scaler = canvasGo.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+        }
+
+        if (hudPanel == null)
+        {
+            var hudGo = new GameObject("HUDPanel", typeof(RectTransform));
+            hudGo.transform.SetParent(mainCanvas.transform, false);
+            var hudRt = hudGo.GetComponent<RectTransform>();
+            hudRt.anchorMin = Vector2.zero;
+            hudRt.anchorMax = Vector2.one;
+            hudRt.offsetMin = Vector2.zero;
+            hudRt.offsetMax = Vector2.zero;
+            hudPanel = hudGo;
+        }
 
         var defaultFont = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
         if (starPowerFillBar != null && starPowerFillBar.sprite == null)
@@ -1145,151 +1189,125 @@ public class GameManager : MonoBehaviour
 
         var badgeSprite = UISpriteFactory.GetRoundedBadge();
 
-        // 1. Build iconic SM64 8-Wedge Circular Power Meter (Top-Center inside HUDPanel)
+        // 1. Build unified Odyssey-style Health + Oxygen Circular Meter (Top-Center inside HUDPanel)
         if (hudPanel != null && _powerMeterRoot == null)
         {
-            var meterGo = new GameObject("SM64PowerMeter", typeof(RectTransform), typeof(Image));
+            var meterGo = new GameObject("OdysseyHealthOxygenMeter", typeof(RectTransform));
             meterGo.transform.SetParent(hudPanel.transform, false);
             _powerMeterRoot = meterGo.GetComponent<RectTransform>();
             _powerMeterRoot.anchorMin = new Vector2(0.5f, 1f);
             _powerMeterRoot.anchorMax = new Vector2(0.5f, 1f);
             _powerMeterRoot.pivot = new Vector2(0.5f, 1f);
-            _powerMeterRoot.anchoredPosition = new Vector2(0f, -14f);
+            _powerMeterRoot.anchoredPosition = new Vector2(0f, -24f);
             _powerMeterRoot.sizeDelta = new Vector2(114f, 114f);
-
-            var bezel = meterGo.GetComponent<Image>();
-            bezel.sprite = UISpriteFactory.GetPowerRingFrame();
-            bezel.color = Color.white;
-            bezel.raycastTarget = false;
 
             for (var i = 0; i < 8; i++)
             {
-                var wGo = new GameObject($"Wedge_{i}", typeof(RectTransform), typeof(Image));
+                var wGo = new GameObject($"RingSeg_{i}", typeof(RectTransform), typeof(Image));
                 wGo.transform.SetParent(_powerMeterRoot, false);
                 var wRt = wGo.GetComponent<RectTransform>();
                 wRt.anchorMin = Vector2.zero;
                 wRt.anchorMax = Vector2.one;
-                wRt.offsetMin = new Vector2(8f, 8f);
-                wRt.offsetMax = new Vector2(-8f, -8f);
+                wRt.offsetMin = Vector2.zero;
+                wRt.offsetMax = Vector2.zero;
                 var wImg = wGo.GetComponent<Image>();
-                wImg.sprite = UISpriteFactory.GetPowerWedge(i);
+                wImg.sprite = UISpriteFactory.GetOdysseyRingSegment(i);
                 wImg.raycastTarget = false;
                 _powerMeterWedges[i] = wImg;
             }
+
+            var heartGo = new GameObject("HeartCenterIcon", typeof(RectTransform), typeof(Image));
+            heartGo.transform.SetParent(_powerMeterRoot, false);
+            var hRt = heartGo.GetComponent<RectTransform>();
+            hRt.anchorMin = new Vector2(0.5f, 0.5f);
+            hRt.anchorMax = new Vector2(0.5f, 0.5f);
+            hRt.pivot = new Vector2(0.5f, 0.5f);
+            hRt.anchoredPosition = new Vector2(0f, -1f);
+            hRt.sizeDelta = new Vector2(64f, 64f);
+            var hImg = heartGo.GetComponent<Image>();
+            hImg.sprite = UISpriteFactory.GetHeartIcon();
+            hImg.color = Color.white;
+            hImg.raycastTarget = false;
 
             var centerGo = new GameObject("MeterCenterLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
             centerGo.transform.SetParent(_powerMeterRoot, false);
             var cRt = centerGo.GetComponent<RectTransform>();
             cRt.anchorMin = Vector2.zero;
             cRt.anchorMax = Vector2.one;
-            cRt.offsetMin = Vector2.zero;
-            cRt.offsetMax = Vector2.zero;
+            cRt.offsetMin = new Vector2(0f, 3f);
+            cRt.offsetMax = new Vector2(0f, 3f);
             _powerMeterCenterText = centerGo.GetComponent<TextMeshProUGUI>();
-            StyleSm64Tmp(_powerMeterCenterText, defaultFont, 15f, new Color(1f, 0.92f, 0.45f), TextAlignmentOptions.Center);
-            _powerMeterCenterText.text = "PWR";
+            _powerMeterCenterText.font = defaultFont;
+            _powerMeterCenterText.fontSize = 30f;
+            _powerMeterCenterText.fontStyle = FontStyles.Bold;
+            _powerMeterCenterText.color = new Color(0.08f, 0.09f, 0.12f);
+            _powerMeterCenterText.alignment = TextAlignmentOptions.Center;
+            _powerMeterCenterText.raycastTarget = false;
+            _powerMeterCenterText.text = "8";
         }
 
-        // 2. Enhance Top-Left SM64 Counters Card with Cap/Star/Coin icons, Lives & Act Badge
+        // 2. Authentic SM64 / 64DS HUD: floating icons + bold outlined counters (Lives Top-Left, Coins & Stars Top-Right, no boxy card!)
         if (hudPanel != null)
         {
+            static void PinCorner(RectTransform rt, bool right, Vector2 pos, Vector2 size)
+            {
+                float ax = right ? 1f : 0f;
+                rt.anchorMin = new Vector2(ax, 1f);
+                rt.anchorMax = new Vector2(ax, 1f);
+                rt.pivot = new Vector2(ax, 1f);
+                rt.anchoredPosition = pos;
+                rt.sizeDelta = size;
+            }
+
             var statsCard = hudPanel.transform.Find("TopLeftStatsCard");
             if (statsCard != null)
             {
                 var cardImg = statsCard.GetComponent<Image>();
-                if (cardImg != null && badgeSprite != null)
-                {
-                    cardImg.sprite = badgeSprite;
-                    cardImg.type = Image.Type.Sliced;
-                    cardImg.color = new Color(0.06f, 0.11f, 0.25f, 0.78f);
-                }
+                if (cardImg != null) cardImg.enabled = false;
 
-                var cardRt = statsCard.GetComponent<RectTransform>();
-                if (cardRt != null)
-                {
-                    cardRt.sizeDelta = new Vector2(330f, 178f);
-                    cardRt.anchoredPosition = new Vector2(18f, -14f);
-                }
-
-                static void PinTopLeft(RectTransform rt, Vector2 pos, Vector2 size)
-                {
-                    rt.anchorMin = new Vector2(0f, 1f);
-                    rt.anchorMax = new Vector2(0f, 1f);
-                    rt.pivot = new Vector2(0f, 1f);
-                    rt.anchoredPosition = pos;
-                    rt.sizeDelta = size;
-                }
-
-                // Shift existing TMP counters right to make room for icons & Lives row
-                if (starCounterText != null)
-                {
-                    PinTopLeft(starCounterText.rectTransform, new Vector2(64f, -14f), new Vector2(108f, 34f));
-                    StyleSm64Tmp(starCounterText, defaultFont, 26f, new Color(1f, 0.86f, 0.18f), TextAlignmentOptions.Left);
-                    EnsureCounterIcon(statsCard, "SM64StarBadge", UISpriteFactory.GetStarIcon(), new Vector2(18f, -14f), 34f);
-                }
-
-                if (coinCounterText != null)
-                {
-                    PinTopLeft(coinCounterText.rectTransform, new Vector2(64f, -52f), new Vector2(108f, 32f));
-                    StyleSm64Tmp(coinCounterText, defaultFont, 24f, new Color(1f, 0.88f, 0.24f), TextAlignmentOptions.Left);
-                    EnsureCounterIcon(statsCard, "SM64CoinBadge", UISpriteFactory.GetCoinIcon(false), new Vector2(20f, -52f), 30f);
-                }
-
-                if (redCoinCounterText != null)
-                {
-                    PinTopLeft(redCoinCounterText.rectTransform, new Vector2(215f, -52f), new Vector2(98f, 32f));
-                    StyleSm64Tmp(redCoinCounterText, defaultFont, 22f, new Color(1f, 0.42f, 0.36f), TextAlignmentOptions.Left);
-                    EnsureCounterIcon(statsCard, "SM64RedCoinBadge", UISpriteFactory.GetCoinIcon(true), new Vector2(180f, -52f), 28f);
-                }
-
-                // Lives badge at top-right of TopLeftStatsCard
-                if (_livesCounterText == null)
-                {
-                    EnsureCounterIcon(statsCard, "SM64MarioCapBadge", UISpriteFactory.GetMarioCapIcon(), new Vector2(178f, -14f), 34f);
-                    var livesGo = new GameObject("SM64LivesText", typeof(RectTransform), typeof(TextMeshProUGUI));
-                    livesGo.transform.SetParent(statsCard, false);
-                    var lRt = livesGo.GetComponent<RectTransform>();
-                    lRt.anchorMin = new Vector2(0f, 1f);
-                    lRt.anchorMax = new Vector2(0f, 1f);
-                    lRt.pivot = new Vector2(0f, 1f);
-                    lRt.anchoredPosition = new Vector2(216f, -14f);
-                    lRt.sizeDelta = new Vector2(90f, 34f);
-                    _livesCounterText = livesGo.GetComponent<TextMeshProUGUI>();
-                    StyleSm64Tmp(_livesCounterText, defaultFont, 25f, new Color(1f, 0.96f, 0.96f), TextAlignmentOptions.Left);
-                }
-
-                // Act Mission label above bottom bar
-                if (_actMissionBadgeText == null)
-                {
-                    var actGo = new GameObject("SM64ActMissionText", typeof(RectTransform), typeof(TextMeshProUGUI));
-                    actGo.transform.SetParent(statsCard, false);
-                    _actMissionBadgeText = actGo.GetComponent<TextMeshProUGUI>();
-                }
-                if (_actMissionBadgeText != null)
-                {
-                    var aRt = _actMissionBadgeText.GetComponent<RectTransform>();
-                    aRt.anchorMin = new Vector2(0f, 1f);
-                    aRt.anchorMax = new Vector2(1f, 1f);
-                    aRt.pivot = new Vector2(0.5f, 1f);
-                    aRt.anchoredPosition = new Vector2(0f, -92f);
-                    aRt.sizeDelta = new Vector2(-28f, 36f);
-                    _actMissionBadgeText.textWrappingMode = TextWrappingModes.Normal;
-                    StyleSm64Tmp(_actMissionBadgeText, defaultFont, 14f, new Color(0.75f, 0.90f, 1.0f), TextAlignmentOptions.Left);
-                }
                 var barBg = statsCard.Find("StarPowerBarBG");
                 if (barBg == null && starPowerFillBar != null) barBg = starPowerFillBar.transform.parent;
-                if (barBg != null)
+                if (barBg != null) barBg.gameObject.SetActive(false);
+
+                if (_actMissionBadgeText != null) _actMissionBadgeText.gameObject.SetActive(false);
+            }
+
+            // Top-Left: Hide Lives counter on gameplay HUD
+            var capBadge = hudPanel.transform.Find("SM64MarioCapBadge");
+            if (capBadge != null) capBadge.gameObject.SetActive(false);
+            if (_livesCounterText != null) _livesCounterText.gameObject.SetActive(false);
+
+            // Top-Right: Yellow Coin & Red Coin counters (shown only when >= 1 collected; Stars hidden on gameplay HUD)
+            if (coinCounterText == null)
+            {
+                var coinGo = new GameObject("CoinCounterText", typeof(RectTransform), typeof(TextMeshProUGUI));
+                coinCounterText = coinGo.GetComponent<TextMeshProUGUI>();
+            }
+            coinCounterText.transform.SetParent(hudPanel.transform, false);
+            PinCorner(coinCounterText.rectTransform, right: true, new Vector2(-26f, -20f), new Vector2(104f, 38f));
+            StyleSm64Tmp(coinCounterText, defaultFont, 30f, new Color(1f, 0.90f, 0.22f), TextAlignmentOptions.Left);
+            EnsureCounterIconTopRight(hudPanel.transform, "SM64CoinBadge", UISpriteFactory.GetCoinIcon(false), new Vector2(-134f, -20f), 34f);
+            _coinBadgeGo = hudPanel.transform.Find("SM64CoinBadge")?.gameObject;
+
+            if (starCounterText != null) starCounterText.gameObject.SetActive(false);
+            var starBadge = hudPanel.transform.Find("SM64StarBadge");
+            if (starBadge != null) starBadge.gameObject.SetActive(false);
+
+            // Top-Left: Row of Red Coin icons (no number text, 1 icon per collected red coin like SM64DS)
+            for (var i = 0; i < _redCoinSlots.Length; i++)
+            {
+                var slotName = $"SM64RedCoinSlot_{i}";
+                EnsureCounterIcon(hudPanel.transform, slotName, UISpriteFactory.GetCoinIcon(true), new Vector2(26f + i * 36f, -18f), 34f);
+                var slotTf = hudPanel.transform.Find(slotName);
+                if (slotTf != null)
                 {
-                    var barBgRt = barBg.GetComponent<RectTransform>();
-                    if (barBgRt != null)
-                    {
-                        barBgRt.anchorMin = new Vector2(0f, 0f);
-                        barBgRt.anchorMax = new Vector2(1f, 0f);
-                        barBgRt.pivot = new Vector2(0.5f, 0f);
-                        barBgRt.anchoredPosition = new Vector2(0f, 10f);
-                        barBgRt.sizeDelta = new Vector2(-28f, 10f);
-                    }
+                    _redCoinSlots[i] = slotTf.GetComponent<Image>();
+                    slotTf.gameObject.SetActive(false);
                 }
             }
+            if (redCoinCounterText != null) redCoinCounterText.gameObject.SetActive(false);
+            var oldRedBadge = hudPanel.transform.Find("SM64RedCoinBadge");
+            if (oldRedBadge != null) oldRedBadge.gameObject.SetActive(false);
 
             var timerCard = hudPanel.transform.Find("TopRightTimerCard");
             if (timerCard != null)
@@ -1323,7 +1341,7 @@ public class GameManager : MonoBehaviour
         UpdateSm64PowerMeterVisual();
     }
 
-    private static void EnsureCounterIcon(Transform parent, string name, Sprite icon, Vector2 topLeftPos, float size)
+    private static void EnsureCounterIcon(Transform parent, string name, Sprite icon, Vector2 pos, float size, bool bottomLeft = false)
     {
         if (parent == null || icon == null) return;
         var existing = parent.Find(name);
@@ -1338,10 +1356,30 @@ public class GameManager : MonoBehaviour
             go.transform.SetParent(parent, false);
         }
         var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0f, 1f);
-        rt.anchorMax = new Vector2(0f, 1f);
-        rt.pivot = new Vector2(0f, 1f);
-        rt.anchoredPosition = topLeftPos;
+        float ay = bottomLeft ? 0f : 1f;
+        rt.anchorMin = new Vector2(0f, ay);
+        rt.anchorMax = new Vector2(0f, ay);
+        rt.pivot = new Vector2(0f, ay);
+        rt.anchoredPosition = pos;
+        rt.sizeDelta = new Vector2(size, size);
+        var img = go.GetComponent<Image>();
+        img.sprite = icon;
+        img.preserveAspect = true;
+        img.raycastTarget = false;
+    }
+
+    private static void EnsureCounterIconTopRight(Transform parent, string name, Sprite icon, Vector2 pos, float size, bool bottomRight = false)
+    {
+        if (parent == null || icon == null) return;
+        var existing = parent.Find(name);
+        var go = existing != null ? existing.gameObject : new GameObject(name, typeof(RectTransform), typeof(Image));
+        if (existing == null) go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        float ay = bottomRight ? 0f : 1f;
+        rt.anchorMin = new Vector2(1f, ay);
+        rt.anchorMax = new Vector2(1f, ay);
+        rt.pivot = new Vector2(1f, ay);
+        rt.anchoredPosition = pos;
         rt.sizeDelta = new Vector2(size, size);
         var img = go.GetComponent<Image>();
         img.sprite = icon;
@@ -1363,18 +1401,18 @@ public class GameManager : MonoBehaviour
             if (_sm64OutlinedFontMat == null)
             {
                 _sm64OutlinedFontMat = new Material(tmp.fontSharedMaterial);
-                _sm64OutlinedFontMat.SetColor(OutlineColor, new Color(0.05f, 0.06f, 0.12f, 1f));
-                _sm64OutlinedFontMat.SetFloat(OutlineWidth, 0.24f);
+                _sm64OutlinedFontMat.SetColor(OutlineColor, new Color(0.04f, 0.04f, 0.08f, 1f));
+                _sm64OutlinedFontMat.SetFloat(OutlineWidth, 0.34f);
                 if (_sm64OutlinedFontMat.HasProperty(FaceDilate))
-                    _sm64OutlinedFontMat.SetFloat(FaceDilate, 0.06f);
+                    _sm64OutlinedFontMat.SetFloat(FaceDilate, 0.12f);
             }
             tmp.fontSharedMaterial = _sm64OutlinedFontMat;
         }
 
         var shadow = tmp.GetComponent<Shadow>();
         if (shadow == null) shadow = tmp.gameObject.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
-        shadow.effectDistance = new Vector2(2f, -2f);
+        shadow.effectColor = new Color(0f, 0f, 0f, 0.9f);
+        shadow.effectDistance = new Vector2(3f, -3f);
     }
 
     private static void StyleModalCard(GameObject panel, string cardName, Sprite badgeSprite)
@@ -1393,42 +1431,31 @@ public class GameManager : MonoBehaviour
     {
         if (titlePanel == null) return;
 
+        // Clean white SM64DS Star Select background
+        var panelImg = titlePanel.GetComponent<Image>();
+        if (panelImg == null) panelImg = titlePanel.AddComponent<Image>();
+        panelImg.enabled = true;
+        panelImg.sprite = null;
+        panelImg.color = new Color(0.97f, 0.97f, 0.97f, 1f);
+
         var header = titlePanel.transform.Find("TitleHeaderScrim");
-        if (header != null && badgeSprite != null)
-        {
-            var hImg = header.GetComponent<Image>();
-            if (hImg != null)
-            {
-                hImg.sprite = badgeSprite;
-                hImg.type = Image.Type.Sliced;
-                hImg.color = new Color(0.08f, 0.16f, 0.42f, 0.88f);
-            }
-            foreach (var tmp in header.GetComponentsInChildren<TextMeshProUGUI>(true))
-            {
-                StyleSm64Tmp(tmp, font, tmp.name.Contains("Main") ? 38f : 18f,
-                    tmp.name.Contains("Main") ? new Color(1f, 0.88f, 0.22f) : Color.white,
-                    TextAlignmentOptions.Center);
-            }
-        }
+        if (header != null) header.gameObject.SetActive(false);
 
         var promptScrim = titlePanel.transform.Find("TitlePromptScrim");
-        if (promptScrim != null && badgeSprite != null)
+        if (promptScrim != null)
         {
             var pImg = promptScrim.GetComponent<Image>();
-            if (pImg != null)
-            {
-                pImg.sprite = badgeSprite;
-                pImg.type = Image.Type.Sliced;
-                pImg.color = new Color(0.11f, 0.52f, 0.20f, 0.92f);
-            }
+            if (pImg != null) pImg.enabled = false;
             var pRt = promptScrim.GetComponent<RectTransform>();
             if (pRt != null)
             {
-                pRt.anchoredPosition = new Vector2(0f, 22f);
-                pRt.sizeDelta = new Vector2(420f, 50f);
+                pRt.anchorMin = new Vector2(0.5f, 0f);
+                pRt.anchorMax = new Vector2(0.5f, 0f);
+                pRt.pivot = new Vector2(0.5f, 0f);
+                pRt.anchoredPosition = new Vector2(0f, 18f);
+                pRt.sizeDelta = new Vector2(460f, 40f);
             }
-            var pBtn = promptScrim.GetComponent<Button>();
-            if (pBtn == null) pBtn = promptScrim.gameObject.AddComponent<Button>();
+            var pBtn = promptScrim.GetComponent<Button>() ?? promptScrim.gameObject.AddComponent<Button>();
             pBtn.onClick.RemoveAllListeners();
             pBtn.onClick.AddListener(StartGameFromTitle);
         }
@@ -1442,88 +1469,198 @@ public class GameManager : MonoBehaviour
             ptRt.offsetMax = Vector2.zero;
             ptRt.localScale = Vector3.one;
             titlePromptText.margin = Vector4.zero;
-            titlePromptText.text = "LET'S-A GO!  [SPACE / ENTER]";
-            StyleSm64Tmp(titlePromptText, font, 20f, Color.white, TextAlignmentOptions.Center);
+            titlePromptText.text = "PRESS SPACE / CLICK MEDALLION TO START";
+            StyleSm64PlainTmp(titlePromptText, font, 16f, new Color(0.22f, 0.22f, 0.26f), TextAlignmentOptions.Center);
         }
 
-        if (titlePanel.transform.Find("SM64StarSelectBar") != null) return;
+        if (titlePanel.transform.Find("SM64StarSelectRoot") != null) return;
 
-        var barGo = new GameObject("SM64StarSelectBar", typeof(RectTransform), typeof(Image));
-        barGo.transform.SetParent(titlePanel.transform, false);
-        var bRt = barGo.GetComponent<RectTransform>();
-        bRt.anchorMin = new Vector2(0.5f, 0f);
-        bRt.anchorMax = new Vector2(0.5f, 0f);
-        bRt.pivot = new Vector2(0.5f, 0f);
-        bRt.anchoredPosition = new Vector2(0f, 82f);
-        bRt.sizeDelta = new Vector2(680f, 94f);
-        var bImg = barGo.GetComponent<Image>();
-        bImg.sprite = badgeSprite;
-        bImg.type = Image.Type.Sliced;
-        bImg.color = new Color(0.06f, 0.11f, 0.28f, 0.86f);
+        var rootGo = new GameObject("SM64StarSelectRoot", typeof(RectTransform));
+        rootGo.transform.SetParent(titlePanel.transform, false);
+        var rootRt = rootGo.GetComponent<RectTransform>();
+        rootRt.anchorMin = Vector2.zero;
+        rootRt.anchorMax = Vector2.one;
+        rootRt.offsetMin = Vector2.zero;
+        rootRt.offsetMax = Vector2.zero;
 
-        var previewGo = new GameObject("ActPreviewText", typeof(RectTransform), typeof(TextMeshProUGUI));
-        previewGo.transform.SetParent(barGo.transform, false);
-        var pvRt = previewGo.GetComponent<RectTransform>();
-        pvRt.anchorMin = new Vector2(0f, 1f);
-        pvRt.anchorMax = new Vector2(1f, 1f);
-        pvRt.pivot = new Vector2(0.5f, 1f);
-        pvRt.anchoredPosition = new Vector2(0f, -6f);
-        pvRt.sizeDelta = new Vector2(-24f, 26f);
-        _titleActPreviewText = previewGo.GetComponent<TextMeshProUGUI>();
-        StyleSm64Tmp(_titleActPreviewText, font, 16f, new Color(1f, 0.90f, 0.34f), TextAlignmentOptions.Center);
-
-        var starCount = Mathf.Clamp(targetStarsToWin, 1, 6);
+        // 1. Top Row: 1..6 Stars
+        const int starCount = 6;
         _titleStarButtonsBg.Clear();
-        const float spacing = 104f;
+        const float spacing = 112f;
         var startX = -((starCount - 1) * spacing) * 0.5f;
 
         for (var i = 0; i < starCount; i++)
         {
             var actNum = i + 1;
             var starTitle = GetStarTitleForAct(actNum);
-            var btnGo = new GameObject($"StarSelectBtn_{actNum}", typeof(RectTransform), typeof(Image), typeof(Button));
-            btnGo.transform.SetParent(barGo.transform, false);
-            var rt = btnGo.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0.5f, 0f);
-            rt.anchorMax = new Vector2(0.5f, 0f);
-            rt.pivot = new Vector2(0.5f, 0f);
-            rt.anchoredPosition = new Vector2(startX + i * spacing, 10f);
-            rt.sizeDelta = new Vector2(92f, 52f);
 
-            var bg = btnGo.GetComponent<Image>();
-            bg.sprite = badgeSprite;
-            bg.type = Image.Type.Sliced;
-            _titleStarButtonsBg.Add(bg);
-
-            var iconGo = new GameObject("Icon", typeof(RectTransform), typeof(Image));
-            iconGo.transform.SetParent(btnGo.transform, false);
-            var iRt = iconGo.GetComponent<RectTransform>();
-            iRt.anchorMin = new Vector2(0f, 0.5f);
-            iRt.anchorMax = new Vector2(0f, 0.5f);
-            iRt.pivot = new Vector2(0.5f, 0.5f);
-            iRt.anchoredPosition = new Vector2(24f, 0f);
-            iRt.sizeDelta = new Vector2(30f, 30f);
-            var iconImg = iconGo.GetComponent<Image>();
-            iconImg.sprite = UISpriteFactory.GetStarIcon();
-            iconImg.raycastTarget = false;
-
-            var lblGo = new GameObject("Num", typeof(RectTransform), typeof(TextMeshProUGUI));
-            lblGo.transform.SetParent(btnGo.transform, false);
-            var nRt = lblGo.GetComponent<RectTransform>();
-            nRt.anchorMin = new Vector2(0.5f, 0f);
-            nRt.anchorMax = new Vector2(1f, 1f);
-            nRt.offsetMin = new Vector2(2f, 0f);
-            nRt.offsetMax = new Vector2(-4f, 0f);
-            var numTmp = lblGo.GetComponent<TextMeshProUGUI>();
-            StyleSm64Tmp(numTmp, font, 20f, Color.white, TextAlignmentOptions.Center);
+            var numGo = new GameObject($"StarNum_{actNum}", typeof(RectTransform), typeof(TextMeshProUGUI));
+            numGo.transform.SetParent(rootGo.transform, false);
+            var nRt = numGo.GetComponent<RectTransform>();
+            nRt.anchorMin = new Vector2(0.5f, 1f);
+            nRt.anchorMax = new Vector2(0.5f, 1f);
+            nRt.pivot = new Vector2(0.5f, 0.5f);
+            nRt.anchoredPosition = new Vector2(startX + i * spacing, -48f);
+            nRt.sizeDelta = new Vector2(60f, 36f);
+            var numTmp = numGo.GetComponent<TextMeshProUGUI>();
+            StyleSm64PlainTmp(numTmp, font, 26f, new Color(0.08f, 0.08f, 0.10f), TextAlignmentOptions.Center);
             numTmp.text = $"{actNum}";
+
+            var btnGo = new GameObject($"StarSelectBtn_{actNum}", typeof(RectTransform), typeof(Image), typeof(Button));
+            btnGo.transform.SetParent(rootGo.transform, false);
+            var rt = btnGo.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 1f);
+            rt.anchorMax = new Vector2(0.5f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = new Vector2(startX + i * spacing, -106f);
+            rt.sizeDelta = new Vector2(78f, 78f);
+
+            var starImg = btnGo.GetComponent<Image>();
+            starImg.sprite = UISpriteFactory.GetStarIcon();
+            starImg.preserveAspect = true;
+            _titleStarButtonsBg.Add(starImg);
 
             var btn = btnGo.GetComponent<Button>();
             btn.onClick.AddListener(() => SelectActFromTitle(actNum, starTitle));
         }
 
+        // 2. Act Mission Title
+        var previewGo = new GameObject("ActPreviewText", typeof(RectTransform), typeof(TextMeshProUGUI));
+        previewGo.transform.SetParent(rootGo.transform, false);
+        var pvRt = previewGo.GetComponent<RectTransform>();
+        pvRt.anchorMin = new Vector2(0.5f, 1f);
+        pvRt.anchorMax = new Vector2(0.5f, 1f);
+        pvRt.pivot = new Vector2(0.5f, 0.5f);
+        pvRt.anchoredPosition = new Vector2(0f, -172f);
+        pvRt.sizeDelta = new Vector2(720f, 40f);
+        _titleActPreviewText = previewGo.GetComponent<TextMeshProUGUI>();
+        StyleSm64PlainTmp(_titleActPreviewText, font, 26f, new Color(0.07f, 0.07f, 0.09f), TextAlignmentOptions.Center);
+
+        // 3. Score Row: SCORE [Coin] x 00
+        var scoreLblGo = new GameObject("ScoreLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
+        scoreLblGo.transform.SetParent(rootGo.transform, false);
+        var slRt = scoreLblGo.GetComponent<RectTransform>();
+        slRt.anchorMin = new Vector2(0.5f, 1f);
+        slRt.anchorMax = new Vector2(0.5f, 1f);
+        slRt.pivot = new Vector2(0.5f, 0.5f);
+        slRt.anchoredPosition = new Vector2(-58f, -216f);
+        slRt.sizeDelta = new Vector2(140f, 36f);
+        var slTmp = scoreLblGo.GetComponent<TextMeshProUGUI>();
+        StyleSm64PlainTmp(slTmp, font, 22f, new Color(0.08f, 0.08f, 0.10f), TextAlignmentOptions.Right);
+        slTmp.text = "SCORE";
+
+        var scoreCoinGo = new GameObject("ScoreCoinIcon", typeof(RectTransform), typeof(Image));
+        scoreCoinGo.transform.SetParent(rootGo.transform, false);
+        var scRt = scoreCoinGo.GetComponent<RectTransform>();
+        scRt.anchorMin = new Vector2(0.5f, 1f);
+        scRt.anchorMax = new Vector2(0.5f, 1f);
+        scRt.pivot = new Vector2(0.5f, 0.5f);
+        scRt.anchoredPosition = new Vector2(36f, -216f);
+        scRt.sizeDelta = new Vector2(34f, 34f);
+        var scImg = scoreCoinGo.GetComponent<Image>();
+        scImg.sprite = UISpriteFactory.GetCoinIcon(false);
+        scImg.preserveAspect = true;
+
+        var scoreValGo = new GameObject("ScoreValue", typeof(RectTransform), typeof(TextMeshProUGUI));
+        scoreValGo.transform.SetParent(rootGo.transform, false);
+        var svRt = scoreValGo.GetComponent<RectTransform>();
+        svRt.anchorMin = new Vector2(0.5f, 1f);
+        svRt.anchorMax = new Vector2(0.5f, 1f);
+        svRt.pivot = new Vector2(0.5f, 0.5f);
+        svRt.anchoredPosition = new Vector2(102f, -216f);
+        svRt.sizeDelta = new Vector2(96f, 36f);
+        var svTmp = scoreValGo.GetComponent<TextMeshProUGUI>();
+        StyleSm64Tmp(svTmp, font, 28f, new Color(1f, 0.42f, 0.14f), TextAlignmentOptions.Left);
+        svTmp.text = $"× {coinsCollected:00}";
+
+        // 4. Center Course Medallion (clickable to start!) + Course Name
+        var medGo = new GameObject("CourseMedallion", typeof(RectTransform), typeof(Image), typeof(Button));
+        medGo.transform.SetParent(rootGo.transform, false);
+        var mRt = medGo.GetComponent<RectTransform>();
+        mRt.anchorMin = new Vector2(0.5f, 0.5f);
+        mRt.anchorMax = new Vector2(0.5f, 0.5f);
+        mRt.pivot = new Vector2(0.5f, 0.5f);
+        mRt.anchoredPosition = new Vector2(0f, -22f);
+        mRt.sizeDelta = new Vector2(148f, 148f);
+        var mImg = medGo.GetComponent<Image>();
+        mImg.sprite = UISpriteFactory.GetCourseMedallionIcon();
+        mImg.preserveAspect = true;
+        medGo.GetComponent<Button>().onClick.AddListener(StartGameFromTitle);
+
+        var courseWordGo = new GameObject("CourseWord", typeof(RectTransform), typeof(TextMeshProUGUI));
+        courseWordGo.transform.SetParent(medGo.transform, false);
+        var cwRt = courseWordGo.GetComponent<RectTransform>();
+        cwRt.anchorMin = new Vector2(0.5f, 1f);
+        cwRt.anchorMax = new Vector2(0.5f, 1f);
+        cwRt.pivot = new Vector2(0.5f, 0.5f);
+        cwRt.anchoredPosition = new Vector2(0f, -26f);
+        cwRt.sizeDelta = new Vector2(130f, 26f);
+        var cwTmp = courseWordGo.GetComponent<TextMeshProUGUI>();
+        StyleSm64Tmp(cwTmp, font, 16f, new Color(1f, 0.88f, 0.18f), TextAlignmentOptions.Center);
+        cwTmp.text = "COURSE";
+
+        var courseNumGo = new GameObject("CourseNum", typeof(RectTransform), typeof(TextMeshProUGUI));
+        courseNumGo.transform.SetParent(medGo.transform, false);
+        var cnRt = courseNumGo.GetComponent<RectTransform>();
+        cnRt.anchorMin = Vector2.zero;
+        cnRt.anchorMax = Vector2.one;
+        cnRt.offsetMin = Vector2.zero;
+        cnRt.offsetMax = Vector2.zero;
+        var cnTmp = courseNumGo.GetComponent<TextMeshProUGUI>();
+        StyleSm64Tmp(cnTmp, font, 34f, new Color(1f, 0.36f, 0.14f), TextAlignmentOptions.Center);
+        cnTmp.text = "1";
+
+        var courseNameGo = new GameObject("CourseName", typeof(RectTransform), typeof(TextMeshProUGUI));
+        courseNameGo.transform.SetParent(rootGo.transform, false);
+        var cnaRt = courseNameGo.GetComponent<RectTransform>();
+        cnaRt.anchorMin = new Vector2(0.5f, 0.5f);
+        cnaRt.anchorMax = new Vector2(0.5f, 0.5f);
+        cnaRt.pivot = new Vector2(0.5f, 0.5f);
+        cnaRt.anchoredPosition = new Vector2(0f, -124f);
+        cnaRt.sizeDelta = new Vector2(640f, 40f);
+        var cnaTmp = courseNameGo.GetComponent<TextMeshProUGUI>();
+        StyleSm64PlainTmp(cnaTmp, font, 26f, new Color(0.07f, 0.07f, 0.09f), TextAlignmentOptions.Center);
+        cnaTmp.text = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name.ToUpperInvariant();
+
+        // 5. Bottom-Left Lives & Bottom-Right Stars
+        EnsureCounterIcon(rootGo.transform, "TitleLivesIcon", UISpriteFactory.GetMarioCapIcon(), new Vector2(28f, 64f), 44f, bottomLeft: true);
+        var tLivesGo = new GameObject("TitleLivesText", typeof(RectTransform), typeof(TextMeshProUGUI));
+        tLivesGo.transform.SetParent(rootGo.transform, false);
+        var tlRt = tLivesGo.GetComponent<RectTransform>();
+        tlRt.anchorMin = Vector2.zero;
+        tlRt.anchorMax = Vector2.zero;
+        tlRt.pivot = Vector2.zero;
+        tlRt.anchoredPosition = new Vector2(80f, 22f);
+        tlRt.sizeDelta = new Vector2(120f, 40f);
+        var tlTmp = tLivesGo.GetComponent<TextMeshProUGUI>();
+        StyleSm64Tmp(tlTmp, font, 30f, new Color(1f, 0.44f, 0.14f), TextAlignmentOptions.Left);
+        var titleLives = player != null ? Mathf.Max(0, player.lives) : 4;
+        tlTmp.text = $"× {titleLives}";
+
+        EnsureCounterIconTopRight(rootGo.transform, "TitleStarsIcon", UISpriteFactory.GetStarIcon(), new Vector2(-114f, 64f), 42f, bottomRight: true);
+        var tStarsGo = new GameObject("TitleStarsText", typeof(RectTransform), typeof(TextMeshProUGUI));
+        tStarsGo.transform.SetParent(rootGo.transform, false);
+        var tsRt = tStarsGo.GetComponent<RectTransform>();
+        tsRt.anchorMin = new Vector2(1f, 0f);
+        tsRt.anchorMax = new Vector2(1f, 0f);
+        tsRt.pivot = new Vector2(1f, 0f);
+        tsRt.anchoredPosition = new Vector2(-24f, 22f);
+        tsRt.sizeDelta = new Vector2(92f, 40f);
+        var tsTmp = tStarsGo.GetComponent<TextMeshProUGUI>();
+        StyleSm64Tmp(tsTmp, font, 30f, new Color(1f, 0.44f, 0.14f), TextAlignmentOptions.Left);
+        tsTmp.text = $"× {starsCollected}";
+
         RefreshTitleActSelectionVisual();
-        BuildCourseSwitcherRibbon(badgeSprite, font);
+    }
+
+    private static void StyleSm64PlainTmp(TextMeshProUGUI tmp, TMP_FontAsset font, float size, Color color, TextAlignmentOptions align)
+    {
+        if (tmp == null) return;
+        if (font != null && tmp.font == null) tmp.font = font;
+        tmp.fontSize = size;
+        tmp.fontStyle = FontStyles.Bold;
+        tmp.color = color;
+        tmp.alignment = align;
     }
 
     private void BuildCourseSwitcherRibbon(Sprite badgeSprite, TMP_FontAsset font)
@@ -1617,16 +1754,17 @@ public class GameManager : MonoBehaviour
     {
         for (var i = 0; i < _titleStarButtonsBg.Count; i++)
         {
-            var bg = _titleStarButtonsBg[i];
-            if (bg == null) continue;
+            var starImg = _titleStarButtonsBg[i];
+            if (starImg == null) continue;
             var selected = (i + 1) == currentActNumber;
-            bg.color = selected
-                ? new Color(0.86f, 0.58f, 0.08f, 0.96f)
-                : new Color(0.14f, 0.24f, 0.48f, 0.85f);
+            starImg.color = selected
+                ? Color.white
+                : new Color(0.55f, 0.60f, 0.72f, 0.88f);
+            starImg.transform.localScale = selected ? Vector3.one * 1.15f : Vector3.one;
         }
         if (_titleActPreviewText != null)
         {
-            _titleActPreviewText.text = $"STAR {currentActNumber}: {GetStarTitleForAct(currentActNumber)}";
+            _titleActPreviewText.text = $"STAR {currentActNumber}: {GetStarTitleForAct(currentActNumber)}".ToUpperInvariant();
         }
     }
 }
