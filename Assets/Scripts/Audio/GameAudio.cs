@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Audio;
 using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
 
@@ -33,6 +34,11 @@ public class GameAudio : MonoBehaviour
     [Header("Exposed Volume Parameters (0..1 linear gain)")]
     [Range(0f, 1f)] public float musicVol = 0.75f;
     [FormerlySerializedAs("SFXVol")] [Range(0f, 1f)] public float sfxVol = 0.90f;
+
+    [Header("Optional AudioMixer Routing")]
+    [SerializeField] private AudioMixerGroup musicMixerGroup;
+    [SerializeField] private AudioMixerGroup sfxMixerGroup;
+    [SerializeField] private AudioMixerGroup stingMixerGroup;
 
     public float MusicVol
     {
@@ -133,7 +139,7 @@ public class GameAudio : MonoBehaviour
 
     private void SetupSources()
     {
-        AmbientSource = CreateChildSource("AmbientBedSource", spatial: false, loop: true);
+        AmbientSource = CreateChildSource("AmbientBedSource", spatial: false, loop: true, musicMixerGroup);
         AmbientSource.clip = _activeTheme switch
         {
             Sm64CourseTheme.OceanBayWaltz => OceanBayClip,
@@ -144,17 +150,23 @@ public class GameAudio : MonoBehaviour
         AmbientSource.volume = CalculateMusicEffectiveVolume();
         AmbientSource.Play();
 
-        SfxSource = CreateChildSource("SFX2DSource", spatial: false, loop: false);
-        StingSource = CreateChildSource("MilestoneStingSource", spatial: false, loop: false);
+        SfxSource = CreateChildSource("SFX2DSource", spatial: false, loop: false, sfxMixerGroup);
+        var resolvedStingGroup = stingMixerGroup != null ? stingMixerGroup : sfxMixerGroup;
+        StingSource = CreateChildSource("MilestoneStingSource", spatial: false, loop: false, resolvedStingGroup);
     }
 
-    private AudioSource CreateChildSource(string sourceName, bool spatial, bool loop)
+    private AudioSource CreateChildSource(string sourceName, bool spatial, bool loop, AudioMixerGroup outputGroup = null)
     {
         var existing = transform.Find(sourceName);
         if (existing != null)
         {
             var es = existing.GetComponent<AudioSource>();
-            if (es != null) return es;
+            if (es != null)
+            {
+                if (outputGroup != null && es.outputAudioMixerGroup == null)
+                    es.outputAudioMixerGroup = outputGroup;
+                return es;
+            }
         }
         var go = new GameObject(sourceName);
         go.transform.SetParent(transform, false);
@@ -164,6 +176,8 @@ public class GameAudio : MonoBehaviour
         src.spatialBlend = spatial ? 1f : 0f;
         src.minDistance = 2.5f;
         src.maxDistance = 28f;
+        if (outputGroup != null)
+            src.outputAudioMixerGroup = outputGroup;
         return src;
     }
 

@@ -1,27 +1,3 @@
-%YAML 1.1
-%TAG !u! tag:unity3d.com,2011:
---- !u!1045 &1
-EditorBuildSettings:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Scenes:
-  - enabled: 1
-    path: Assets/Scenes/BobOmbBattlefield.unity
-    guid: 5abf206e3b84a744482dc71884273a4f
-  - enabled: 1
-    path: Assets/Scenes/WhompsFortress.unity
-    guid: 1ce505d12db18494c83a462e2935d0ef
-  - enabled: 1
-    path: Assets/Scenes/JollyRogerBay.unity
-    guid: 7179af081965b2f4788737bb6b2be945
-  - enabled: 1
-    path: Assets/Scenes/CoolCoolMountain.unity
-    guid: 4e01d92fdcceac947aa623283257ce1e
-  - enabled: 1
-    path: Assets/Scenes/Boss1.unity
-    guid: d90c300c7f5d4cb428cf234fdd5e5665
-  - enabled: 1
-    path: Assets/Scenes/Test.unity
-    guid: ff1f39bc83f8725478000a44910b5485
-  m_configObjects:
-    com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+version https://git-lfs.github.com/spec/v1
+oid sha256:31d24b342a217ed01f1eb385b4f533a27320d40d923ec79bc5acb5942192998a
+size 364
