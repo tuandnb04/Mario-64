@@ -521,8 +521,9 @@ public class MarioRemakeController : MonoBehaviour
         var crouchHeld = ReadCrouchHeld();
         var attackPressed = ReadAttackPressed();
         var divePressed = ReadDivePressed();
-        var rollPressed = ReadRollPressed();
-        var spinPressed = ReadSpinPressed();
+        // 8b. Spin Attack & Odyssey Roll disabled to keep moveset faithful to Super Mario 64.
+        var rollPressed = false;
+        var spinPressed = false;
         var firstPersonTogglePressed = ReadFirstPersonPressed();
 
         // Support automated Playtest CLI triggers
@@ -791,16 +792,8 @@ public class MarioRemakeController : MonoBehaviour
             UpdateVerticalPhysics(grounded, dt);
         }
 
-        // 13. Wall Slide & Auto Ledge-Grab Check
-        _isWallSliding = !grounded && _carriedObject == null && !_isGroundPounding && CurrentVerticalSpeed < -1.0f && (Time.time - _lastWallTouchTime) < 0.14f;
-        if (_isWallSliding)
-        {
-            CurrentVerticalSpeed = Mathf.Max(CurrentVerticalSpeed, -3.8f);
-            if (Mathf.Abs(Mathf.Sin(Time.time * 18f)) > 0.85f && VFXPool.Instance != null)
-            {
-                VFXPool.Instance.SpawnFootstepPuff(transform.position + Vector3.up * 0.65f);
-            }
-        }
+        // 13. Wall Slide disabled (SM64 uses direct Wall Kick on impact instead of slow wall sliding)
+        _isWallSliding = false;
 
         // 14. Execute CharacterController Move
         if (_cc == null || !_cc.enabled) return;

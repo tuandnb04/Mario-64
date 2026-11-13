@@ -25,7 +25,7 @@ public class TestPlaygroundManager : MonoBehaviour
     private static readonly string[] ChecklistOrder =
     {
         "SingleJump", "DoubleJump", "TripleJump", "LongJump", "Backflip", "SideFlip",
-        "WallKick", "LedgeClimb", "GroundPound", "DiveBellySlide", "OdysseyRoll", "SpinAttack",
+        "WallKick", "LedgeClimb", "GroundPound", "DiveBellySlide",
         "PunchKickCombo", "AirKick", "SlideKick", "SlopeSlide",
         "PoleClimb", "PoleHandstand", "CarryThrow", "Swim", "FirstPersonLook", "FreeCameraOrbit"
     };
@@ -146,9 +146,9 @@ public class TestPlaygroundManager : MonoBehaviour
         {
             var camMode = hero.IsFirstPersonLooking ? "1ST-PERSON (C-UP)" : (Cursor.lockState == CursorLockMode.Locked ? "FREE 360° [MOUSE LOCKED]" : "FREE 360° [CLICK/DRAG]");
             telemetryText.text =
-                $"<b>SM64 + ODYSSEY SANDBOX GYM</b>  |  State: <color=#FFD93D>{hero.CurrentStateLabel}</color>\n" +
+                $"<b>SM64 REMAKE SANDBOX GYM</b>  |  State: <color=#FFD93D>{hero.CurrentStateLabel}</color>\n" +
                 $"Speed: {hero.CurrentPlanarSpeed:F1} m/s  |  VertY: {hero.CurrentVerticalSpeed:F1}  |  Slope: {hero.CurrentGroundAngle:F0}°  |  Cam: {camMode}\n" +
-                $"<b>Controls:</b> WASD Move | Mouse Free Orbit (Tab Unlock, V 1st-Person, Scroll Zoom) | Space Jump/WallKick | C Crouch/GP | Shift/C+E Roll | Z Spin | E/R-Click Dive | F/L-Click Punch/Carry/Throw | Keys 1-9 Teleport | 0 Reset";
+                $"<b>Controls:</b> WASD Move | Mouse Free Orbit (Tab Unlock, V 1st-Person, Scroll Zoom) | Space Jump/WallKick | C Crouch/GP | E/R-Click Dive | F/L-Click Punch/Carry/Throw | Keys 1-9 Teleport | 0 Reset";
         }
 
         if (checklistText == null) return;
