@@ -590,6 +590,10 @@ public class BobOmbBattlefieldController : MonoBehaviour
                 currentHits++;
                 if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
                 if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 1.4f, isStar: true);
+                if (MarioRemakeController.Instance != null && MarioRemakeController.Instance.impulseSource != null)
+                    MarioRemakeController.Instance.impulseSource.GenerateImpulse(0.45f);
+                if (GameManager.Instance != null)
+                    GameManager.Instance.SpawnFloatingWorldText(transform.position + Vector3.up * 2.2f, $"KING BOB-OMB HIT {currentHits}/{maxHits}!", Palette.AccentStarGold);
 
                 if (currentHits >= maxHits)
                 {
@@ -847,6 +851,7 @@ public class BobOmbBattlefieldController : MonoBehaviour
     private IEnumerator WingCapFlightSequenceRoutine(MarioRemakeController hero)
     {
         _activeTriggered = true;
+        hero.ActivateWingCap(25f);
         var cc = hero.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;
 

@@ -353,8 +353,11 @@ public class JollyRogerBayController : MonoBehaviour
         if (!(Vector3.Distance(hero.transform.position, transform.position) < 2.3f)) return;
         _cooldownTimer = 2.0f;
         MetalCapRemainingTimer = 24f; // 24 seconds of heavy Metal Mario!
+        hero.ActivateMetalCap(24f);
         if (GameAudio.Instance != null) GameAudio.Instance.PlayMilestoneSting();
         if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position, isStar: true);
+        if (GameManager.Instance != null)
+            GameManager.Instance.SpawnFloatingWorldText(transform.position + Vector3.up * 1.5f, "METAL CAP!", Color.white);
         if (hero.popProxy != null) hero.popProxy.TriggerScalePop(1.3f);
     }
 

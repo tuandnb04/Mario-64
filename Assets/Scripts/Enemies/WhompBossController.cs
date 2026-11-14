@@ -321,6 +321,13 @@ public class WhompBossController : MonoBehaviour
             VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * (isKingBoss ? 1.5f : 0.9f), isStar: isKingBoss);
         }
         if (GameAudio.Instance != null) GameAudio.Instance.PlayGroundPoundSound();
+        if (MarioRemakeController.Instance != null && MarioRemakeController.Instance.impulseSource != null)
+            MarioRemakeController.Instance.impulseSource.GenerateImpulse(isKingBoss ? 0.45f : 0.25f);
+        if (GameManager.Instance != null)
+        {
+            var label = isKingBoss ? "WHOMP CRACKED!" : "WHOMP STOMPED!";
+            GameManager.Instance.SpawnFloatingWorldText(transform.position + Vector3.up * (isKingBoss ? 2.1f : 1.3f), label, Palette.AccentStarGold);
+        }
 
         if (currentHealth <= 0)
         {

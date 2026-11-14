@@ -56,6 +56,7 @@ public class ProceduralCharacterMotion : MonoBehaviour
     [FormerlySerializedAs("PoleClimbSpeed")] public float poleClimbSpeed;
     [FormerlySerializedAs("IsCarryingObject")] public bool isCarryingObject;
     [FormerlySerializedAs("TurnBankRate")] public float turnBankRate;
+    public bool isWingGliding;
 
     private string _currentAnimState = "";
     private Vector3 _scaleVelocity = Vector3.one;
@@ -294,9 +295,11 @@ public class ProceduralCharacterMotion : MonoBehaviour
         var sy = 1f - _squashAmount + _stretchAmount;
         var sxz = 1f + (_squashAmount * 0.65f) - (_stretchAmount * 0.42f);
 
-        // Subtle skid lean or high-speed turn bank
-        var targetBank = isGrounded && normalizedSpeed > 0.25f ? Mathf.Clamp(-turnBankRate * 0.06f, -15f, 15f) : 0f;
-        var targetLean = isSkidding ? -16f : (isGrounded && normalizedSpeed > 0.7f ? 7f : 0f);
+        // Subtle skid lean, wing-cap glide tilt, or high-speed turn bank
+        var targetBank = isWingGliding
+            ? Mathf.Clamp(-turnBankRate * 0.10f, -24f, 24f)
+            : (isGrounded && normalizedSpeed > 0.25f ? Mathf.Clamp(-turnBankRate * 0.06f, -15f, 15f) : 0f);
+        var targetLean = isWingGliding ? 18f : (isSkidding ? -16f : (isGrounded && normalizedSpeed > 0.7f ? 7f : 0f));
         _bankAngleDeg = Mathf.Lerp(_bankAngleDeg, targetBank, 1f - Mathf.Exp(-14f * dt));
         _forwardLeanDeg = Mathf.Lerp(_forwardLeanDeg, targetLean, 1f - Mathf.Exp(-16f * dt));
 

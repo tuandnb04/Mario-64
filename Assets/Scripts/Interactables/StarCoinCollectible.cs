@@ -85,4 +85,13 @@ public class StarCoinCollectible : MonoBehaviour
 
         gameObject.SetActive(false);
     }
+
+    /// <summary>
+    /// Marks this star or coin as already collected when restoring persisted SaveManager state.
+    /// </summary>
+    public void MarkCollectedFromSave()
+    {
+        IsCollected = true;
+        gameObject.SetActive(false);
+    }
 }

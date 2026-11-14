@@ -57,7 +57,9 @@ public class ExclamationSwitch : MonoBehaviour
         _isPressed = true;
         _resetTimer = resetDelay;
         if (GameAudio.Instance != null)
-            GameAudio.Instance.PlayPickupBlip(0.35f);
+            GameAudio.Instance.PlayPowerUpCap();
+        if (VFXPool.Instance != null)
+            VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up * 0.5f, isStar: true);
         onPressed?.Invoke();
     }
 

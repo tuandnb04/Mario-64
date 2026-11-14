@@ -87,6 +87,7 @@ public static class RemakeMaterialAndAtmosphereUpgrader
         // 3. Upgrade Odyssey-style Trilight Ambient & Sun across all 5 levels
         string[] scenes =
         {
+            "Assets/Scenes/PeachCastleHub.unity",
             "Assets/Scenes/BobOmbBattlefield.unity",
             "Assets/Scenes/WhompsFortress.unity",
             "Assets/Scenes/CoolCoolMountain.unity",

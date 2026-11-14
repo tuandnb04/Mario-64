@@ -573,6 +573,10 @@ public class BowserBossController : MonoBehaviour
         }
 
         currentBombHitsRemaining--;
+        if (GameManager.Instance != null)
+            GameManager.Instance.SpawnFloatingWorldText(bombPos + Vector3.up * 2.2f, "BOWSER BLASTED!", Palette.CharacterPrimary);
+        if (MarioRemakeController.Instance != null && MarioRemakeController.Instance.impulseSource != null)
+            MarioRemakeController.Instance.impulseSource.GenerateImpulse(0.65f);
         if (currentBombHitsRemaining <= 0)
         {
             _state = BossState.Defeated;

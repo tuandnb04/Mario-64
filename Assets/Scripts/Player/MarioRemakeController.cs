@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Mario64Remake;
 using Unity.Cinemachine;
 using UnityEngine;
@@ -191,6 +192,19 @@ public class MarioRemakeController : MonoBehaviour
     private Vector3 _lastWallNormal;
     private float _lastWallTouchTime = -10f;
 
+    // Power-Up Caps (Wing Cap & Metal Cap)
+    public float wingCapTimer { get; private set; }
+    public float metalCapTimer { get; private set; }
+    public bool IsWingCapActive => wingCapTimer > 0f;
+    public bool IsMetalCapActive => metalCapTimer > 0f;
+
+    private GameObject _wingCapVisualRoot;
+    private Transform _leftWingVisual;
+    private Transform _rightWingVisual;
+    private Material _metalCapMaterial;
+    private readonly List<(Renderer renderer, Material[] sharedMaterials)> _originalHeroMaterials = new();
+    private bool _metalVisualApplied;
+
     public bool IsGroundPoundingActive => _isGroundPounding || _groundPoundImpactTimer > 0f;
     public bool IsAttackingOrSliding => _attackComboStage > 0 || _isDiving || _isBellySliding || _isSlideKicking || _isRolling || _isSpinAttacking || _isSlopeSliding || IsGroundPoundingActive;
     public bool IsStompingDown => CurrentVerticalSpeed < -0.5f && !_cc.isGrounded && !_isLedgeHanging;
@@ -217,6 +231,7 @@ public class MarioRemakeController : MonoBehaviour
             if (IsSpinningBowser) return "Spinning Bowser";
             if (_activePole != null) return _isPoleHandstand ? "Pole Handstand" : "Pole Climb";
             if (IsSwimming) return "Swimming";
+            if (IsWingCapActive && _cc != null && !_cc.isGrounded) return "Wing Cap Glide";
             if (_isLedgeHanging) return "Ledge Hang";
             if (_isGroundPounding) return "Ground Pound";
             if (_isRolling) return "Odyssey Roll";
@@ -265,6 +280,168 @@ public class MarioRemakeController : MonoBehaviour
         _jumpCutApplied = false;
         CurrentVerticalSpeed = Mathf.Sqrt(2f * Mathf.Abs(gravity) * height);
         if (motion != null) motion.TriggerJumpStretch();
+    }
+
+    public void ActivateWingCap(float duration = 25f)
+    {
+        wingCapTimer = Mathf.Max(wingCapTimer, duration);
+        EnsureWingCapVisuals();
+        if (_wingCapVisualRoot != null) _wingCapVisualRoot.SetActive(true);
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayPowerUpCap();
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up, isStar: true);
+        if (popProxy != null) popProxy.TriggerScalePop(1.25f);
+        RecordMoveStat("WingCap");
+    }
+
+    public void ActivateMetalCap(float duration = 20f)
+    {
+        metalCapTimer = Mathf.Max(metalCapTimer, duration);
+        ApplyMetalVisual(true);
+        if (GameAudio.Instance != null) GameAudio.Instance.PlayPowerUpCap();
+        if (VFXPool.Instance != null) VFXPool.Instance.SpawnPickupBurst(transform.position + Vector3.up, isStar: true);
+        if (popProxy != null) popProxy.TriggerScalePop(1.28f);
+        RecordMoveStat("MetalCap");
+    }
+
+    private void EnsureWingCapVisuals()
+    {
+        if (_wingCapVisualRoot != null) return;
+        var capParent = FindChildByNameRecursive(transform, "Cap") ?? FindChildByNameRecursive(transform, "Head") ?? transform;
+        _wingCapVisualRoot = new GameObject("WingCapWingsVisual");
+        _wingCapVisualRoot.transform.SetParent(capParent, false);
+        _wingCapVisualRoot.transform.localPosition = new Vector3(0f, 0.14f, 0f);
+        _wingCapVisualRoot.transform.localRotation = Quaternion.identity;
+
+        var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+        var wingMat = shader != null ? new Material(shader) : null;
+        if (wingMat != null)
+        {
+            wingMat.color = Color.white;
+            if (wingMat.HasProperty("_BaseColor")) wingMat.SetColor("_BaseColor", Color.white);
+            if (wingMat.HasProperty("_Smoothness")) wingMat.SetFloat("_Smoothness", 0.35f);
+        }
+
+        _leftWingVisual = CreateWingMeshSide("LeftWing", -1f, wingMat);
+        _rightWingVisual = CreateWingMeshSide("RightWing", 1f, wingMat);
+        _wingCapVisualRoot.SetActive(false);
+    }
+
+    private Transform CreateWingMeshSide(string wingName, float sideSign, Material wingMat)
+    {
+        var pivot = new GameObject(wingName).transform;
+        pivot.SetParent(_wingCapVisualRoot.transform, false);
+        pivot.localPosition = new Vector3(sideSign * 0.22f, 0.04f, -0.04f);
+        pivot.localRotation = Quaternion.Euler(0f, 0f, sideSign * 22f);
+
+        var blade = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        DestroyColliderIfPresent(blade);
+        blade.name = "FeatherBlade";
+        blade.transform.SetParent(pivot, false);
+        blade.transform.localPosition = new Vector3(sideSign * 0.22f, 0.05f, -0.02f);
+        blade.transform.localRotation = Quaternion.Euler(14f, sideSign * -12f, sideSign * 14f);
+        blade.transform.localScale = new Vector3(0.46f, 0.045f, 0.22f);
+
+        var mr = blade.GetComponent<MeshRenderer>();
+        if (mr != null && wingMat != null) mr.sharedMaterial = wingMat;
+        return pivot;
+    }
+
+    private static void DestroyColliderIfPresent(GameObject go)
+    {
+        if (go == null) return;
+        var col = go.GetComponent<Collider>();
+        if (col != null) Destroy(col);
+    }
+
+    private static Transform FindChildByNameRecursive(Transform parent, string targetName)
+    {
+        if (parent == null) return null;
+        for (var i = 0; i < parent.childCount; i++)
+        {
+            var c = parent.GetChild(i);
+            if (string.Equals(c.name, targetName, System.StringComparison.OrdinalIgnoreCase)) return c;
+            var nested = FindChildByNameRecursive(c, targetName);
+            if (nested != null) return nested;
+        }
+        return null;
+    }
+
+    private void ApplyMetalVisual(bool enabled)
+    {
+        if (_heroRenderers == null) _heroRenderers = GetComponentsInChildren<Renderer>(true);
+        if (enabled && !_metalVisualApplied)
+        {
+            if (_metalCapMaterial == null)
+            {
+                var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                if (shader != null)
+                {
+                    _metalCapMaterial = new Material(shader);
+                    var silver = new Color(0.76f, 0.80f, 0.86f, 1f);
+                    _metalCapMaterial.color = silver;
+                    if (_metalCapMaterial.HasProperty("_BaseColor")) _metalCapMaterial.SetColor("_BaseColor", silver);
+                    if (_metalCapMaterial.HasProperty("_Metallic")) _metalCapMaterial.SetFloat("_Metallic", 0.95f);
+                    if (_metalCapMaterial.HasProperty("_Smoothness")) _metalCapMaterial.SetFloat("_Smoothness", 0.88f);
+                }
+            }
+            if (_metalCapMaterial == null) return;
+
+            _originalHeroMaterials.Clear();
+            foreach (var r in _heroRenderers)
+            {
+                if (r == null || (_wingCapVisualRoot != null && r.transform.IsChildOf(_wingCapVisualRoot.transform))) continue;
+                var shared = r.sharedMaterials;
+                _originalHeroMaterials.Add((r, shared));
+                var metalMats = new Material[shared.Length];
+                for (var i = 0; i < metalMats.Length; i++) metalMats[i] = _metalCapMaterial;
+                r.sharedMaterials = metalMats;
+            }
+            _metalVisualApplied = true;
+        }
+        else if (!enabled && _metalVisualApplied)
+        {
+            foreach (var (r, mats) in _originalHeroMaterials)
+            {
+                if (r != null && mats != null) r.sharedMaterials = mats;
+            }
+            _originalHeroMaterials.Clear();
+            _metalVisualApplied = false;
+        }
+    }
+
+    private void UpdateCapTimersAndVisuals(float dt)
+    {
+        if (wingCapTimer > 0f)
+        {
+            wingCapTimer = Mathf.Max(0f, wingCapTimer - dt);
+            if (_wingCapVisualRoot != null)
+            {
+                var airborne = _cc != null && !_cc.isGrounded;
+                var flapSpeed = airborne ? 11f : 4.5f;
+                var flapAmp = airborne ? 18f : 5f;
+                var flap = Mathf.Sin(Time.time * flapSpeed) * flapAmp;
+                if (_leftWingVisual != null) _leftWingVisual.localRotation = Quaternion.Euler(0f, 0f, -22f - flap);
+                if (_rightWingVisual != null) _rightWingVisual.localRotation = Quaternion.Euler(0f, 0f, 22f + flap);
+                if (wingCapTimer <= 0f) _wingCapVisualRoot.SetActive(false);
+            }
+        }
+        else if (_wingCapVisualRoot != null && _wingCapVisualRoot.activeSelf)
+        {
+            _wingCapVisualRoot.SetActive(false);
+        }
+
+        if (metalCapTimer > 0f)
+        {
+            metalCapTimer = Mathf.Max(0f, metalCapTimer - dt);
+            if (metalCapTimer <= 0f && !JollyRogerBayController.IsMetalMarioActive)
+            {
+                ApplyMetalVisual(false);
+            }
+        }
+        else if (_metalVisualApplied && !JollyRogerBayController.IsMetalMarioActive)
+        {
+            ApplyMetalVisual(false);
+        }
     }
 
     public void TeleportAndFace(Vector3 worldPos, float yawDeg)
@@ -452,6 +629,10 @@ public class MarioRemakeController : MonoBehaviour
         _attackTimer = 0f;
         _activePlatform = null;
         IsSwimming = false;
+        wingCapTimer = 0f;
+        metalCapTimer = 0f;
+        if (_wingCapVisualRoot != null) _wingCapVisualRoot.SetActive(false);
+        ApplyMetalVisual(false);
         currentHealth = maxHealth;
         currentOxygenSeconds = maxOxygenSeconds;
         _hurtInvulnTimer = 0f;
@@ -490,6 +671,7 @@ public class MarioRemakeController : MonoBehaviour
 
         if (_poleCooldownTimer > 0f) _poleCooldownTimer -= dt;
         if (_spinCooldownTimer > 0f) _spinCooldownTimer -= dt;
+        UpdateCapTimersAndVisuals(dt);
 
         // 0. Check Swimming vs Grounded State + Health Flash + Abyss Respawn
         UpdateDamageFlashAndAbyssCheck(dt);
@@ -771,6 +953,15 @@ public class MarioRemakeController : MonoBehaviour
             {
                 _lastJumpPressedTime = -10f;
                 ExecuteWallKick();
+            }
+            else if (!grounded && IsWingCapActive && !_isGroundPounding && _activePole == null && !_isLedgeHanging)
+            {
+                _lastJumpPressedTime = -10f;
+                _jumpCutApplied = true;
+                CurrentVerticalSpeed = Mathf.Max(CurrentVerticalSpeed + 8.5f, 11.5f);
+                if (motion != null) motion.TriggerJumpStretch(2);
+                if (GameAudio.Instance != null) GameAudio.Instance.PlayWallKickSound();
+                if (VFXPool.Instance != null) VFXPool.Instance.SpawnFootstepPuff(transform.position);
             }
         }
 
@@ -1953,14 +2144,16 @@ public class MarioRemakeController : MonoBehaviour
             return;
         }
 
-        // Odyssey Apex Float + Crisp Fall!
+        // Odyssey Apex Float + Crisp Fall + Wing Cap Glide!
         var gScale = 1.0f;
-        if (_isLongJumping) gScale = 0.78f;
+        if (IsWingCapActive && CurrentVerticalSpeed < 0f) gScale = 0.36f;
+        else if (_isLongJumping) gScale = 0.78f;
         else if (Mathf.Abs(CurrentVerticalSpeed) < 3.2f) gScale = 0.68f;
         else if (CurrentVerticalSpeed < -1.2f) gScale = 1.24f;
 
         CurrentVerticalSpeed += gravity * gScale * dt;
-        CurrentVerticalSpeed = Mathf.Max(CurrentVerticalSpeed, -29.0f);
+        var minFallSpeed = IsWingCapActive ? -9.5f : -29.0f;
+        CurrentVerticalSpeed = Mathf.Max(CurrentVerticalSpeed, minFallSpeed);
     }
 
     private void OnJustLanded()
@@ -2121,6 +2314,7 @@ public class MarioRemakeController : MonoBehaviour
         motion.isCarryingObject = _carriedObject != null;
         motion.attackStage = _attackComboStage;
         motion.attackProgress = _attackDuration > 0f ? 1f - Mathf.Clamp01(_attackTimer / _attackDuration) : 0f;
+        motion.isWingGliding = IsWingCapActive && _cc != null && !_cc.isGrounded;
     }
 
     // -------------------------------------------------------------------------
@@ -2139,6 +2333,7 @@ public class MarioRemakeController : MonoBehaviour
     public void TakeDamage(int damageWedges, Vector3 hazardSourcePos, bool ignoreInvuln = false)
     {
         if (GameManager.Instance != null && GameManager.Instance.currentState != GameState.Playing) return;
+        if (IsMetalCapActive && !ignoreInvuln) return;
         if (!ignoreInvuln && _hurtInvulnTimer > 0f) return;
 
         // Release Bowser tail if hit mid-spin
@@ -2279,7 +2474,7 @@ public class MarioRemakeController : MonoBehaviour
         _isSlopeSliding = false;
         RecordMoveStat("Swim");
 
-        var metalActive = JollyRogerBayController.IsMetalMarioActive;
+        var metalActive = JollyRogerBayController.IsMetalMarioActive || IsMetalCapActive;
         var atSurface = pos.y >= effectiveSurfaceY - 0.45f;
         if (atSurface)
             currentOxygenSeconds = Mathf.MoveTowards(currentOxygenSeconds, maxOxygenSeconds, 14f * dt);

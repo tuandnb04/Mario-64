@@ -9,6 +9,7 @@ public static class RemakeLevelUpgrader
 {
     private static readonly string[] LevelScenes =
     {
+        "Assets/Scenes/PeachCastleHub.unity",
         "Assets/Scenes/BobOmbBattlefield.unity",
         "Assets/Scenes/WhompsFortress.unity",
         "Assets/Scenes/CoolCoolMountain.unity",

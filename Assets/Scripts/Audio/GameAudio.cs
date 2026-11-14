@@ -8,7 +8,8 @@ public enum Sm64CourseTheme
     FortressMarch,
     OceanBayWaltz,
     DarkWorldOrgan,
-    CoolMountainBell
+    CoolMountainBell,
+    PeachCastleWaltz
 }
 
 /// <summary>
@@ -57,6 +58,9 @@ public class GameAudio : MonoBehaviour
     private AudioClip OceanBayClip { get; set; }
     private AudioClip DarkWorldOrganClip { get; set; }
     private AudioClip CoolMountainBellClip { get; set; }
+    private AudioClip PeachCastleWaltzClip { get; set; }
+    private AudioClip PaintingWarpClip { get; set; }
+    private AudioClip PowerUpCapClip { get; set; }
     private AudioClip UIClickClip { get; set; }
     private AudioClip PauseChimeClip { get; set; }
     private AudioClip JumpStage1Clip { get; set; }
@@ -94,6 +98,11 @@ public class GameAudio : MonoBehaviour
     {
         if (_initialized && CoinBlipClip != null && AmbientSource != null) return;
         _initialized = true;
+        if (Application.isPlaying && SaveManager.Instance != null)
+        {
+            musicVol = SaveManager.Instance.MusicVolume;
+            sfxVol = SaveManager.Instance.SfxVolume;
+        }
         DetectCourseThemeFromScene();
         SynthesizeAllClips();
         SetupSources();
@@ -104,6 +113,7 @@ public class GameAudio : MonoBehaviour
         var sceneName = SceneManager.GetActiveScene().name;
         _activeTheme = string.IsNullOrEmpty(sceneName) switch
         {
+            false when (sceneName.Contains("Castle") || sceneName.Contains("Hub")) => Sm64CourseTheme.PeachCastleWaltz,
             false when (sceneName.Contains("Bowser") || sceneName.Contains("DarkWorld")) => Sm64CourseTheme
                 .DarkWorldOrgan,
             false when sceneName.Contains("Cool") => Sm64CourseTheme.CoolMountainBell,
@@ -121,6 +131,9 @@ public class GameAudio : MonoBehaviour
         OceanBayClip = CreateOceanBayLoop(sr);
         DarkWorldOrganClip = CreateDarkWorldOrganLoop(sr);
         CoolMountainBellClip = CreateCoolMountainLoop(sr);
+        PeachCastleWaltzClip = CreatePeachCastleLoop(sr);
+        PaintingWarpClip = CreatePaintingWarpClip(sr);
+        PowerUpCapClip = CreatePowerUpCapClip(sr);
         UIClickClip = CreateMenuBlip(sr, 680f, 1020f, 0.045f);
         PauseChimeClip = CreateMenuBlip(sr, 523.25f, 1046.5f, 0.14f);
         JumpStage1Clip = CreateMarioJumpClip(sr, 330f, 590f, 0.14f);
@@ -142,6 +155,7 @@ public class GameAudio : MonoBehaviour
         AmbientSource = CreateChildSource("AmbientBedSource", spatial: false, loop: true, musicMixerGroup);
         AmbientSource.clip = _activeTheme switch
         {
+            Sm64CourseTheme.PeachCastleWaltz => PeachCastleWaltzClip,
             Sm64CourseTheme.OceanBayWaltz => OceanBayClip,
             Sm64CourseTheme.DarkWorldOrgan => DarkWorldOrganClip,
             Sm64CourseTheme.CoolMountainBell => CoolMountainBellClip,
@@ -207,6 +221,7 @@ public class GameAudio : MonoBehaviour
         if (AmbientSource == null) return;
         var nextClip = theme switch
         {
+            Sm64CourseTheme.PeachCastleWaltz => PeachCastleWaltzClip,
             Sm64CourseTheme.OceanBayWaltz => OceanBayClip,
             Sm64CourseTheme.DarkWorldOrgan => DarkWorldOrganClip,
             Sm64CourseTheme.CoolMountainBell => CoolMountainBellClip,
@@ -374,6 +389,40 @@ public class GameAudio : MonoBehaviour
         SfxSource.pitch = 1.65f;
         SfxSource.volume = CalculateSfxEffectiveVolume(0.45f);
         SfxSource.PlayOneShot(PiranhaChompClip);
+    }
+
+    public void PlayPaintingWarp()
+    {
+        if (StingSource != null && PaintingWarpClip != null)
+        {
+            StingSource.pitch = 1.0f;
+            StingSource.volume = CalculateSfxEffectiveVolume(0.95f);
+            StingSource.PlayOneShot(PaintingWarpClip);
+            return;
+        }
+        if (SfxSource != null && PaintingWarpClip != null)
+        {
+            SfxSource.pitch = 1.0f;
+            SfxSource.volume = CalculateSfxEffectiveVolume(0.95f);
+            SfxSource.PlayOneShot(PaintingWarpClip);
+        }
+    }
+
+    public void PlayPowerUpCap()
+    {
+        if (StingSource != null && PowerUpCapClip != null)
+        {
+            StingSource.pitch = 1.0f;
+            StingSource.volume = CalculateSfxEffectiveVolume(0.95f);
+            StingSource.PlayOneShot(PowerUpCapClip);
+            return;
+        }
+        if (SfxSource != null && PowerUpCapClip != null)
+        {
+            SfxSource.pitch = 1.0f;
+            SfxSource.volume = CalculateSfxEffectiveVolume(0.95f);
+            SfxSource.PlayOneShot(PowerUpCapClip);
+        }
     }
 
     // =========================================================================
@@ -891,6 +940,115 @@ public class GameAudio : MonoBehaviour
             data[i] = Mathf.Clamp((sub + blast) * Envelope5MS(i, samples, fade), -0.98f, 0.98f);
         }
         var clip = AudioClip.Create("SM64_BowserBomb", samples, 1, sr, false);
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    private static AudioClip CreatePeachCastleLoop(int sr)
+    {
+        // Gentle music-box / string waltz inspired by Peach's Castle Courtyard & Foyer (3/4 feel)
+        const float stepDur = 0.24f;
+        const int steps = 36; // 12 bars of 3 beats
+        var samples = Mathf.RoundToInt(stepDur * steps * sr);
+        var data = new float[samples];
+        float[] bass = {
+            174.61f, 261.63f, 349.23f,  174.61f, 261.63f, 349.23f,
+            196.00f, 293.66f, 392.00f,  130.81f, 261.63f, 329.63f,
+            174.61f, 261.63f, 349.23f,  146.83f, 220.00f, 293.66f,
+            196.00f, 293.66f, 392.00f,  130.81f, 261.63f, 392.00f,
+            174.61f, 220.00f, 261.63f,  174.61f, 261.63f, 349.23f,
+            196.00f, 261.63f, 130.81f,  174.61f, 261.63f, 0f
+        };
+        float[] lead = {
+            698.46f, 0f, 880.00f,       1046.50f, 880.00f, 698.46f,
+            783.99f, 659.25f, 587.33f,  659.25f, 523.25f, 0f,
+            698.46f, 783.99f, 880.00f,  783.99f, 698.46f, 587.33f,
+            659.25f, 783.99f, 880.00f,  783.99f, 0f, 523.25f,
+            698.46f, 880.00f, 1046.50f, 1174.66f, 1046.50f, 880.00f,
+            783.99f, 659.25f, 587.33f,  698.46f, 0f, 0f
+        };
+
+        for (var s = 0; s < steps; s++)
+        {
+            var startIdx = Mathf.RoundToInt(s * stepDur * sr);
+            var len = Mathf.RoundToInt(stepDur * 1.45f * sr);
+            float bPh = 0f, lPh = 0f;
+            for (var i = 0; i < len && startIdx + i < samples; i++)
+            {
+                var u = (float)i / len;
+                var val = 0f;
+                if (bass[s] > 1f)
+                {
+                    bPh += (2f * Mathf.PI * bass[s]) / sr;
+                    var harp = Mathf.Sin(bPh) * 0.72f + Mathf.Sin(bPh * 2f) * 0.18f;
+                    val += harp * Mathf.Clamp01(u * 14f) * Mathf.Exp(-u * 3.4f) * 0.14f;
+                }
+                if (lead[s] > 1f)
+                {
+                    lPh += (2f * Mathf.PI * lead[s]) / sr;
+                    var flute = Mathf.Sin(lPh) * 0.68f + Mathf.Sin(lPh * 2f) * 0.22f + Mathf.Sin(lPh * 3f) * 0.08f;
+                    val += flute * Mathf.Clamp01(u * 10f) * Mathf.Exp(-u * 2.4f) * 0.17f;
+                }
+                data[startIdx + i] = Mathf.Clamp(data[startIdx + i] + val, -0.90f, 0.90f);
+            }
+        }
+        var fade = Mathf.RoundToInt(sr * 0.03f);
+        for (var i = 0; i < samples; i++) data[i] *= Envelope5MS(i, samples, fade);
+        var clip = AudioClip.Create("SM64_PeachCastleWaltz", samples, 1, sr, false);
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    private static AudioClip CreatePaintingWarpClip(int sr)
+    {
+        // Classic watery painting-portal warble ("Ba-ba-ba-ba-ba!" shimmer)
+        const float dur = 0.65f;
+        var samples = Mathf.RoundToInt(sr * dur);
+        var data = new float[samples];
+        var fade = Mathf.RoundToInt(sr * 0.006f);
+        var ph = 0f;
+        var wPh = 0f;
+        for (var i = 0; i < samples; i++)
+        {
+            var u = (float)i / samples;
+            wPh += (2f * Mathf.PI * 16f) / sr;
+            var baseFreq = Mathf.Lerp(360f, 1120f, Mathf.Pow(u, 0.75f)) + Mathf.Sin(wPh) * 75f;
+            ph += (2f * Mathf.PI * baseFreq) / sr;
+            var wave = Mathf.Sin(ph) * 0.66f + Mathf.Sin(ph * 2.0f) * 0.24f;
+            var pulse = 0.72f + 0.28f * Mathf.Sin(wPh);
+            var env = Mathf.Clamp01(u * 14f) * Mathf.Pow(1f - u, 0.45f);
+            data[i] = Mathf.Clamp(wave * pulse * env * 0.62f * Envelope5MS(i, samples, fade), -0.95f, 0.95f);
+        }
+        var clip = AudioClip.Create("SM64_PaintingWarp", samples, 1, sr, false);
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    private static AudioClip CreatePowerUpCapClip(int sr)
+    {
+        // Energetic ascending triad chord arpeggio for Wing / Metal Cap
+        float[] notes = { 523.25f, 659.25f, 783.99f, 1046.50f, 1318.51f };
+        const float noteDur = 0.095f;
+        var totalDur = notes.Length * noteDur + 0.16f;
+        var samples = Mathf.RoundToInt(totalDur * sr);
+        var data = new float[samples];
+        for (var n = 0; n < notes.Length; n++)
+        {
+            var startIdx = Mathf.RoundToInt(n * noteDur * sr);
+            var len = Mathf.RoundToInt((n == notes.Length - 1 ? 0.25f : 0.14f) * sr);
+            var ph = 0f;
+            for (var i = 0; i < len && startIdx + i < samples; i++)
+            {
+                var u = (float)i / len;
+                ph += (2f * Mathf.PI * notes[n]) / sr;
+                var brass = Mathf.Sin(ph) * 0.62f + Mathf.Sin(ph * 2f) * 0.28f + Mathf.Sin(ph * 3f) * 0.12f;
+                var env = Mathf.Clamp01(u * 16f) * Mathf.Exp(-u * 2.8f);
+                data[startIdx + i] = Mathf.Clamp(data[startIdx + i] + brass * env * 0.42f, -0.95f, 0.95f);
+            }
+        }
+        var fade = Mathf.RoundToInt(sr * 0.005f);
+        for (var i = 0; i < samples; i++) data[i] *= Envelope5MS(i, samples, fade);
+        var clip = AudioClip.Create("SM64_PowerUpCap", samples, 1, sr, false);
         clip.SetData(data, 0);
         return clip;
     }

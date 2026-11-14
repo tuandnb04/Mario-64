@@ -98,6 +98,7 @@ public class GameManager : MonoBehaviour
     private TextMeshProUGUI _powerMeterCenterText;
     private TextMeshProUGUI _livesCounterText;
     private GameObject _coinBadgeGo;
+    private GameObject _starBadgeGo;
     private readonly Image[] _redCoinSlots = new Image[8];
     private RectTransform _powerMeterRoot;
     private TextMeshProUGUI _actMissionBadgeText;
@@ -125,15 +126,41 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    private static bool IsCastleHubScene(string sceneName)
+    {
+        return !string.IsNullOrEmpty(sceneName) && (sceneName.Contains("Castle") || sceneName.Contains("Hub"));
+    }
+
+    private void RestoreSavedProgressForScene(string sceneName)
+    {
+        if (SaveManager.Instance == null) return;
+        SaveManager.Instance.RecordLastCourse(sceneName, autoSave: false);
+
+        var courseSavedCount = 0;
+        foreach (var item in _allCollectibles)
+        {
+            if (item == null || item.kind != CollectibleKind.PowerStar) continue;
+            if (SaveManager.Instance.IsStarCollected(sceneName, item.missionActIndex))
+            {
+                item.MarkCollectedFromSave();
+                courseSavedCount++;
+            }
+        }
+
+        starsCollected = IsCastleHubScene(sceneName) ? SaveManager.Instance.TotalStarsCollected : courseSavedCount;
+    }
+
     private void Start()
     {
+        var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+        var isCastleHub = IsCastleHubScene(sceneName);
         if (player == null) player = FindAnyObjectByType<MarioRemakeController>();
         RefreshCollectibleRegistry();
+        RestoreSavedProgressForScene(sceneName);
         EnsureSm64StyledHUD();
         WireSliders();
-        SetupActMissionState(1);
+        SetupActMissionState(1, isFreshRun: false);
         SetStateImmediate(titlePanel != null ? GameState.Title : GameState.Playing);
-        var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
         var isJrb = !string.IsNullOrEmpty(sceneName) && sceneName.Contains("JollyRoger");
         var isBitDw = !string.IsNullOrEmpty(sceneName) && (sceneName.Contains("Bowser") || sceneName.Contains("DarkWorld"));
         var isCcm = !string.IsNullOrEmpty(sceneName) && sceneName.Contains("Cool");
@@ -150,9 +177,10 @@ public class GameManager : MonoBehaviour
         if (GameAudio.Instance != null)
         {
             GameAudio.Instance.SetCourseTheme(
-                isBitDw ? Sm64CourseTheme.DarkWorldOrgan :
+                isCastleHub ? Sm64CourseTheme.PeachCastleWaltz :
+                (isBitDw ? Sm64CourseTheme.DarkWorldOrgan :
                 (isCcm ? Sm64CourseTheme.CoolMountainBell :
-                (isJrb ? Sm64CourseTheme.OceanBayWaltz : Sm64CourseTheme.FortressMarch)));
+                (isJrb ? Sm64CourseTheme.OceanBayWaltz : Sm64CourseTheme.FortressMarch))));
         }
     }
 
@@ -452,7 +480,12 @@ public class GameManager : MonoBehaviour
             musicSlider.onValueChanged.RemoveAllListeners();
             musicSlider.onValueChanged.AddListener(val =>
             {
-                if (GameAudio.Instance != null) GameAudio.Instance.SetMusicVolume(val);
+                if (GameAudio.Instance != null)
+                {
+                    GameAudio.Instance.SetMusicVolume(val);
+                    if (SaveManager.Instance != null)
+                        SaveManager.Instance.RecordAudioSettings(GameAudio.Instance.MusicVol, GameAudio.Instance.SfxVol);
+                }
             });
         }
 
@@ -462,15 +495,28 @@ public class GameManager : MonoBehaviour
             sfxSlider.onValueChanged.RemoveAllListeners();
             sfxSlider.onValueChanged.AddListener(val =>
             {
-                if (GameAudio.Instance != null) GameAudio.Instance.SetSfxVolume(val);
+                if (GameAudio.Instance != null)
+                {
+                    GameAudio.Instance.SetSfxVolume(val);
+                    if (SaveManager.Instance != null)
+                        SaveManager.Instance.RecordAudioSettings(GameAudio.Instance.MusicVol, GameAudio.Instance.SfxVol);
+                }
             });
         }
 
         BindModalButton(pausePanel, "PauseModalCard/ResumeButton", ResumeGame);
         BindModalButton(pausePanel, "PauseModalCard/RestartButton", RestartRun);
         BindModalButton(pausePanel, "PauseModalCard/QuitTitleButton", ReturnToTitle);
+        BindModalButton(pausePanel, "PauseModalCard/ReturnCastleButton", ReturnToPeachCastle);
+        BindModalButton(pausePanel, "ReturnCastleButton", ReturnToPeachCastle);
         BindModalButton(endedPanel, "EndedModalCard/EndedRestartButton", RestartRun);
         BindModalButton(endedPanel, "EndedModalCard/EndedTitleButton", ReturnToTitle);
+        BindModalButton(endedPanel, "EndedModalCard/ReturnCastleButton", ReturnToPeachCastle);
+    }
+
+    private static void ReturnToPeachCastle()
+    {
+        SwitchCourseScene("PeachCastleHub");
     }
 
     private static void BindModalButton(GameObject panel, string childPath, UnityEngine.Events.UnityAction action)
@@ -572,7 +618,7 @@ public class GameManager : MonoBehaviour
     public void StartGameFromTitle()
     {
         if (GameAudio.Instance != null) GameAudio.Instance.PlayUIClick();
-        SetupActMissionState(currentActNumber);
+        SetupActMissionState(currentActNumber, isFreshRun: false);
         TransitionToState(GameState.Playing);
         StartCoroutine(AnnounceFirstActRoutine());
     }
@@ -589,6 +635,8 @@ public class GameManager : MonoBehaviour
     private void PauseGame()
     {
         if (GameAudio.Instance != null) GameAudio.Instance.PlayUIClick();
+        if (SaveManager.Instance != null)
+            SaveManager.Instance.RecordCourseCoins(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name, coinsCollected);
         TransitionToState(GameState.Paused);
     }
 
@@ -600,6 +648,8 @@ public class GameManager : MonoBehaviour
 
     private void TriggerWinEnding()
     {
+        if (SaveManager.Instance != null)
+            SaveManager.Instance.RecordCourseCoins(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name, coinsCollected);
         TransitionToState(GameState.Ended);
     }
 
@@ -784,6 +834,8 @@ public class GameManager : MonoBehaviour
             case CollectibleKind.YellowCoin:
             {
                 coinsCollected += 1;
+                if (SaveManager.Instance != null)
+                    SaveManager.Instance.RecordCourseCoins(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name, coinsCollected, autoSave: false);
                 if (player != null)
                 {
                     player.HealHealth(1);
@@ -799,6 +851,8 @@ public class GameManager : MonoBehaviour
             {
                 coinsCollected += 2;
                 redCoinsCollected += 1;
+                if (SaveManager.Instance != null)
+                    SaveManager.Instance.RecordCourseCoins(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name, coinsCollected, autoSave: false);
                 if (player != null)
                 {
                     player.HealHealth(2);
@@ -823,11 +877,22 @@ public class GameManager : MonoBehaviour
                 starsCollected += 1;
                 coinsCollected += 5;
                 if (player != null) player.HealHealth(8);
+                var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+                var actIndex = item != null ? Mathf.Max(1, item.missionActIndex) : Mathf.Max(1, starsCollected);
+                if (SaveManager.Instance != null)
+                {
+                    SaveManager.Instance.RecordStarCollected(sceneName, actIndex);
+                    SaveManager.Instance.RecordCourseCoins(sceneName, coinsCollected);
+                }
                 var starTitle = item != null && !string.IsNullOrEmpty(item.starTitle) ? item.starTitle : $"POWER STAR #{starsCollected}";
                 SpawnFloatingWorldText(worldPos, "+1 POWER STAR!", Palette.AccentStarGold);
                 TriggerMilestoneSequence($"STAR #{starsCollected}/{targetStarsToWin} COLLECTED!", starTitle);
 
                 var isBowserKeyWin = item != null && (item.gameObject.name.Contains("BigKey") || starTitle.Contains("BIG KEY"));
+                if (isBowserKeyWin && SaveManager.Instance != null)
+                {
+                    SaveManager.Instance.RecordBowserKey(sceneName);
+                }
                 if (starsCollected >= targetStarsToWin || isBowserKeyWin)
                 {
                     StartCoroutine(DelayedWinRoutine(2.1f));
@@ -1056,6 +1121,8 @@ public class GameManager : MonoBehaviour
 
     private void RefreshHUDTexts()
     {
+        var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+        var isCastleHub = IsCastleHubScene(sceneName);
         var showCoins = coinsCollected >= 1;
         if (coinCounterText != null)
         {
@@ -1064,8 +1131,16 @@ public class GameManager : MonoBehaviour
         }
         if (_coinBadgeGo != null) _coinBadgeGo.SetActive(showCoins);
 
+        var totalStarsDisplay = SaveManager.Instance != null ? SaveManager.Instance.TotalStarsCollected : starsCollected;
         if (starCounterText != null)
-            starCounterText.gameObject.SetActive(false);
+        {
+            starCounterText.text = $"× {totalStarsDisplay:00}";
+            starCounterText.gameObject.SetActive(isCastleHub);
+        }
+        if (_starBadgeGo != null)
+        {
+            _starBadgeGo.SetActive(isCastleHub);
+        }
 
         if (redCoinCounterText != null)
             redCoinCounterText.gameObject.SetActive(false);
@@ -1092,7 +1167,7 @@ public class GameManager : MonoBehaviour
     private void UpdateSm64PowerMeterVisual()
     {
         if (_powerMeterRoot == null) return;
-        var isSwimAir = player != null && player.IsSwimming && !JollyRogerBayController.IsMetalMarioActive;
+        var isSwimAir = player != null && player.IsSwimming && !JollyRogerBayController.IsMetalMarioActive && !player.IsMetalCapActive;
         var isRecoveringAir = player != null && player.currentOxygenSeconds < player.maxOxygenSeconds - 0.05f;
         var isDamaged = player != null && player.currentHealth < player.maxHealth;
         var shouldShowPower = isDamaged || isSwimAir || isRecoveringAir;
@@ -1289,9 +1364,21 @@ public class GameManager : MonoBehaviour
             EnsureCounterIconTopRight(hudPanel.transform, "SM64CoinBadge", UISpriteFactory.GetCoinIcon(false), new Vector2(-134f, -20f), 34f);
             _coinBadgeGo = hudPanel.transform.Find("SM64CoinBadge")?.gameObject;
 
-            if (starCounterText != null) starCounterText.gameObject.SetActive(false);
-            var starBadge = hudPanel.transform.Find("SM64StarBadge");
-            if (starBadge != null) starBadge.gameObject.SetActive(false);
+            if (starCounterText == null)
+            {
+                var starGo = new GameObject("StarCounterText", typeof(RectTransform), typeof(TextMeshProUGUI));
+                starCounterText = starGo.GetComponent<TextMeshProUGUI>();
+            }
+            starCounterText.transform.SetParent(hudPanel.transform, false);
+            PinCorner(starCounterText.rectTransform, right: true, new Vector2(-26f, -64f), new Vector2(104f, 38f));
+            StyleSm64Tmp(starCounterText, defaultFont, 30f, Palette.AccentStarGold, TextAlignmentOptions.Left);
+            EnsureCounterIconTopRight(hudPanel.transform, "SM64StarBadge", UISpriteFactory.GetStarIcon(), new Vector2(-134f, -64f), 34f);
+            _starBadgeGo = hudPanel.transform.Find("SM64StarBadge")?.gameObject;
+
+            var activeSceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            var showCastleStars = IsCastleHubScene(activeSceneName);
+            starCounterText.gameObject.SetActive(showCastleStars);
+            if (_starBadgeGo != null) _starBadgeGo.SetActive(showCastleStars);
 
             // Top-Left: Row of Red Coin icons (no number text, 1 icon per collected red coin like SM64DS)
             for (var i = 0; i < _redCoinSlots.Length; i++)
@@ -1335,10 +1422,124 @@ public class GameManager : MonoBehaviour
         BuildSm64StarSelectOverlay(badgeSprite, defaultFont);
 
         // 4. Restyle Pause & Ended modals with sleek royal-blue SM64 rounded cards
+        EnsurePauseModalAndReturnCastleButton(badgeSprite, defaultFont);
         StyleModalCard(pausePanel, "PauseModalCard", badgeSprite);
         StyleModalCard(endedPanel, "EndedModalCard", badgeSprite);
 
         UpdateSm64PowerMeterVisual();
+    }
+
+    private void EnsurePauseModalAndReturnCastleButton(Sprite badgeSprite, TMP_FontAsset defaultFont)
+    {
+        if (mainCanvas == null) return;
+        var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+        var isCastleHub = IsCastleHubScene(activeScene);
+
+        if (pausePanel == null)
+        {
+            var existing = mainCanvas.transform.Find("PausePanel");
+            if (existing != null)
+            {
+                pausePanel = existing.gameObject;
+            }
+            else
+            {
+                pausePanel = new GameObject("PausePanel", typeof(RectTransform), typeof(Image));
+                pausePanel.transform.SetParent(mainCanvas.transform, false);
+                var pRt = pausePanel.GetComponent<RectTransform>();
+                pRt.anchorMin = Vector2.zero;
+                pRt.anchorMax = Vector2.one;
+                pRt.offsetMin = Vector2.zero;
+                pRt.offsetMax = Vector2.zero;
+                var scrim = pausePanel.GetComponent<Image>();
+                scrim.color = new Color(0.03f, 0.05f, 0.12f, 0.68f);
+
+                var cardGo = new GameObject("PauseModalCard", typeof(RectTransform), typeof(Image));
+                cardGo.transform.SetParent(pausePanel.transform, false);
+                var cRt = cardGo.GetComponent<RectTransform>();
+                cRt.anchorMin = new Vector2(0.5f, 0.5f);
+                cRt.anchorMax = new Vector2(0.5f, 0.5f);
+                cRt.pivot = new Vector2(0.5f, 0.5f);
+                cRt.sizeDelta = new Vector2(420f, 320f);
+
+                var titleGo = new GameObject("PauseTitle", typeof(RectTransform), typeof(TextMeshProUGUI));
+                titleGo.transform.SetParent(cardGo.transform, false);
+                var tRt = titleGo.GetComponent<RectTransform>();
+                tRt.anchorMin = new Vector2(0.5f, 1f);
+                tRt.anchorMax = new Vector2(0.5f, 1f);
+                tRt.pivot = new Vector2(0.5f, 1f);
+                tRt.anchoredPosition = new Vector2(0f, -26f);
+                tRt.sizeDelta = new Vector2(360f, 44f);
+                var tTmp = titleGo.GetComponent<TextMeshProUGUI>();
+                StyleSm64Tmp(tTmp, defaultFont, 32f, Palette.AccentStarGold, TextAlignmentOptions.Center);
+                tTmp.text = "PAUSED";
+
+                CreatePauseButton(cardGo.transform, "ResumeButton", "RESUME", new Vector2(0f, -110f), new Vector2(260f, 48f), badgeSprite, defaultFont, ResumeGame);
+                CreatePauseButton(cardGo.transform, "RestartButton", isCastleHub ? "RESET HUB" : "RESTART COURSE", new Vector2(0f, -172f), new Vector2(260f, 48f), badgeSprite, defaultFont, RestartRun);
+                if (!isCastleHub)
+                {
+                    CreatePauseButton(cardGo.transform, "ReturnCastleButton", "RETURN TO CASTLE", new Vector2(0f, -234f), new Vector2(260f, 48f), badgeSprite, defaultFont, ReturnToPeachCastle);
+                }
+            }
+            pausePanel.SetActive(false);
+            return;
+        }
+
+        if (!isCastleHub && pausePanel.transform.Find("ReturnCastleButton") == null && pausePanel.transform.Find("PauseModalCard/ReturnCastleButton") == null)
+        {
+            var btnGo = new GameObject("ReturnCastleButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            btnGo.transform.SetParent(pausePanel.transform, false);
+            var bRt = btnGo.GetComponent<RectTransform>();
+            bRt.anchorMin = new Vector2(0.5f, 0f);
+            bRt.anchorMax = new Vector2(0.5f, 0f);
+            bRt.pivot = new Vector2(0.5f, 0f);
+            bRt.anchoredPosition = new Vector2(0f, 36f);
+            bRt.sizeDelta = new Vector2(290f, 46f);
+            var bImg = btnGo.GetComponent<Image>();
+            if (badgeSprite != null) { bImg.sprite = badgeSprite; bImg.type = Image.Type.Sliced; }
+            bImg.color = new Color(0.76f, 0.24f, 0.56f, 0.96f);
+
+            var lblGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+            lblGo.transform.SetParent(btnGo.transform, false);
+            var lRt = lblGo.GetComponent<RectTransform>();
+            lRt.anchorMin = Vector2.zero;
+            lRt.anchorMax = Vector2.one;
+            lRt.offsetMin = Vector2.zero;
+            lRt.offsetMax = Vector2.zero;
+            var lTmp = lblGo.GetComponent<TextMeshProUGUI>();
+            StyleSm64Tmp(lTmp, defaultFont, 18f, Color.white, TextAlignmentOptions.Center);
+            lTmp.text = "RETURN TO PEACH'S CASTLE";
+            btnGo.GetComponent<Button>().onClick.AddListener(ReturnToPeachCastle);
+        }
+    }
+
+    private void CreatePauseButton(Transform parent, string name, string label, Vector2 anchoredPos, Vector2 size, Sprite badgeSprite, TMP_FontAsset font, UnityEngine.Events.UnityAction onClick)
+    {
+        var btnGo = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+        btnGo.transform.SetParent(parent, false);
+        var rt = btnGo.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0.5f, 1f);
+        rt.anchorMax = new Vector2(0.5f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.anchoredPosition = anchoredPos;
+        rt.sizeDelta = size;
+        var img = btnGo.GetComponent<Image>();
+        if (badgeSprite != null) { img.sprite = badgeSprite; img.type = Image.Type.Sliced; }
+        img.color = name == "ReturnCastleButton"
+            ? new Color(0.76f, 0.24f, 0.56f, 0.96f)
+            : new Color(0.18f, 0.36f, 0.72f, 0.95f);
+
+        var lblGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        lblGo.transform.SetParent(btnGo.transform, false);
+        var lRt = lblGo.GetComponent<RectTransform>();
+        lRt.anchorMin = Vector2.zero;
+        lRt.anchorMax = Vector2.one;
+        lRt.offsetMin = Vector2.zero;
+        lRt.offsetMax = Vector2.zero;
+        var tmp = lblGo.GetComponent<TextMeshProUGUI>();
+        StyleSm64Tmp(tmp, font, 19f, Color.white, TextAlignmentOptions.Center);
+        tmp.text = label;
+        btnGo.GetComponent<Button>().onClick.AddListener(onClick);
     }
 
     private static void EnsureCounterIcon(Transform parent, string name, Sprite icon, Vector2 pos, float size, bool bottomLeft = false)
@@ -1571,7 +1772,11 @@ public class GameManager : MonoBehaviour
         svRt.sizeDelta = new Vector2(96f, 36f);
         var svTmp = scoreValGo.GetComponent<TextMeshProUGUI>();
         StyleSm64Tmp(svTmp, font, 28f, new Color(1f, 0.42f, 0.14f), TextAlignmentOptions.Left);
-        svTmp.text = $"× {coinsCollected:00}";
+        var activeCourseName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+        var bestCourseCoins = SaveManager.Instance != null
+            ? Mathf.Max(coinsCollected, SaveManager.Instance.GetBestCourseCoins(activeCourseName))
+            : coinsCollected;
+        svTmp.text = $"× {bestCourseCoins:00}";
 
         // 4. Center Course Medallion (clickable to start!) + Course Name
         var medGo = new GameObject("CourseMedallion", typeof(RectTransform), typeof(Image), typeof(Button));
@@ -1648,9 +1853,13 @@ public class GameManager : MonoBehaviour
         tsRt.sizeDelta = new Vector2(92f, 40f);
         var tsTmp = tStarsGo.GetComponent<TextMeshProUGUI>();
         StyleSm64Tmp(tsTmp, font, 30f, new Color(1f, 0.44f, 0.14f), TextAlignmentOptions.Left);
-        tsTmp.text = $"× {starsCollected}";
+        var totalSavedStars = SaveManager.Instance != null
+            ? Mathf.Max(starsCollected, SaveManager.Instance.TotalStarsCollected)
+            : starsCollected;
+        tsTmp.text = $"× {totalSavedStars}";
 
         RefreshTitleActSelectionVisual();
+        BuildCourseSwitcherRibbon(badgeSprite, font);
     }
 
     private static void StyleSm64PlainTmp(TextMeshProUGUI tmp, TMP_FontAsset font, float size, Color color, TextAlignmentOptions align)
@@ -1673,20 +1882,21 @@ public class GameManager : MonoBehaviour
         rRt.anchorMax = new Vector2(0.5f, 0f);
         rRt.pivot = new Vector2(0.5f, 0f);
         rRt.anchoredPosition = new Vector2(0f, 182f);
-        rRt.sizeDelta = new Vector2(960f, 40f);
+        rRt.sizeDelta = new Vector2(980f, 40f);
 
         (string sceneName, string label)[] courses =
         {
+            ("PeachCastleHub", "0. CASTLE"),
             ("BobOmbBattlefield", "1. BOB-OMB"),
             ("WhompsFortress", "2. WHOMP'S"),
             ("JollyRogerBay", "3. JOLLY ROGER"),
             ("CoolCoolMountain", "4. COOL COOL"),
             ("BowserDarkWorld", "5. DARK WORLD"),
-            ("TestPlayground", "6. TEST GYM")
+            ("Test", "6. TEST GYM")
         };
 
         var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-        const float step = 152f;
+        const float step = 136f;
         var x0 = -((courses.Length - 1) * step) * 0.5f;
         for (var i = 0; i < courses.Length; i++)
         {
@@ -1698,7 +1908,7 @@ public class GameManager : MonoBehaviour
             rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = new Vector2(x0 + i * step, 0f);
-            rt.sizeDelta = new Vector2(142f, 34f);
+            rt.sizeDelta = new Vector2(128f, 34f);
 
             var img = bGo.GetComponent<Image>();
             if (badgeSprite != null) { img.sprite = badgeSprite; img.type = Image.Type.Sliced; }
@@ -1725,6 +1935,11 @@ public class GameManager : MonoBehaviour
 
     public static void SwitchCourseScene(string sceneName)
     {
+        if (instance != null && SaveManager.Instance != null)
+        {
+            var activeCourse = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            SaveManager.Instance.RecordCourseCoins(activeCourse, instance.coinsCollected);
+        }
         if (GameAudio.Instance != null) GameAudio.Instance.PlayUIClick();
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
@@ -1752,14 +1967,24 @@ public class GameManager : MonoBehaviour
 
     private void RefreshTitleActSelectionVisual()
     {
+        var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
         for (var i = 0; i < _titleStarButtonsBg.Count; i++)
         {
             var starImg = _titleStarButtonsBg[i];
             if (starImg == null) continue;
-            var selected = (i + 1) == currentActNumber;
-            starImg.color = selected
-                ? Color.white
-                : new Color(0.55f, 0.60f, 0.72f, 0.88f);
+            var actNum = i + 1;
+            var selected = actNum == currentActNumber;
+            var collected = SaveManager.Instance != null && SaveManager.Instance.IsStarCollected(sceneName, actNum);
+            if (collected)
+            {
+                starImg.color = new Color(1f, 0.92f, 0.24f, 1f);
+            }
+            else
+            {
+                starImg.color = selected
+                    ? Color.white
+                    : new Color(0.55f, 0.60f, 0.72f, 0.78f);
+            }
             starImg.transform.localScale = selected ? Vector3.one * 1.15f : Vector3.one;
         }
         if (_titleActPreviewText != null)
